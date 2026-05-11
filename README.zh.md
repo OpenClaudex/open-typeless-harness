@@ -5,18 +5,18 @@
 </p>
 
 <p align="center">
-  <strong>会记住你如何修正它的语音输入。</strong>
+  <strong>会从你真实修正里学习的语音输入。</strong>
 </p>
 
 <p align="center">
-  • Speak • Polish • Learn Locally •
+  • Speak • Polish • Insert • Learn Locally •
 </p>
 
 <p align="center">
   <a href="README.md">English</a> •
-  <a href="#为什么">为什么</a> •
-  <a href="#产品预览">产品预览</a> •
-  <a href="#工作原理">工作原理</a>
+  <a href="#为什么做它">为什么</a> •
+  <a href="#产品预览">预览</a> •
+  <a href="#学习闭环">学习闭环</a>
 </p>
 
 <p align="center">
@@ -26,19 +26,13 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
 </p>
 
-## 为什么
+## 为什么做它
 
-语音转文字还不够。
+普通语音转文字会反复错在同一批地方：产品名、项目名、中英混排术语，以及你每次插入后马上手动修掉的小错误。
 
-真正的语音输入问题，往往反复出现在同一批地方：产品名、项目名、中英混排术语、个人表达习惯，以及文本插入后你马上手动修掉的小错误。
+Open Typeless Harness 把这些改动当成学习信号。它先转写、润色、插入当前输入框，再观察你如何修正这段文本，让后续口述越来越贴近你的词汇。
 
-Open Typeless Harness 只围绕一个判断：
-
-> **每一次插入后的人工改动，都是学习信号。**
-
-你自然说话。App 负责转写、润色、插入当前输入框，然后观察你如何修正这段文本。稳定的纠错模式会沉淀成本地 speech skills，并在后续润色前被检索注入。
-
-它的目标不是只把声音变成文字，而是让语音输入越来越懂你的词汇和表达。
+> 每一次文字落地后的修正，都应该让下一次输入更准。
 
 ## 产品预览
 
@@ -47,61 +41,51 @@ Open Typeless Harness 只围绕一个判断：
 </p>
 
 <p align="center">
-  <img src="docs/assets/open-typeless-harness-demo.gif" alt="Open Typeless Harness demo" width="780">
+  <img src="docs/assets/open-typeless-harness-demo.gif" alt="Open Typeless Harness focused-field insertion demo" width="780">
 </p>
 
 <p align="center">
-  <a href="docs/assets/open-typeless-harness-demo.mp4">下载 MP4 演示视频</a>
+  <a href="docs/assets/open-typeless-harness-demo.mp4">查看 MP4 演示</a>
 </p>
 
-## 解决什么
+| 插入前 | 插入后 |
+| --- | --- |
+| <img src="docs/assets/open-typeless-harness-real-before.png" alt="Before focused-field insertion" width="390"> | <img src="docs/assets/open-typeless-harness-real-after.png" alt="After focused-field insertion" width="390"> |
 
-- 你说 `type script`，它应该知道你想写 `TypeScript`。
-- 你把 `知呼` 改成 `知乎`，它应该记住。
-- 你反复说某个产品名，它不该每次都当成一次性的 ASR 错误。
-- 你在任意输入框口述，它应该融入你正在使用的 app。
+## 它应该记住什么
 
-## 工作原理
+| 你说出或收到 | 你修正成 |
+| --- | --- |
+| `type script` | `TypeScript` |
+| `知呼` | `知乎` |
+| `cold 或者 cold` | `Claude Code 或 Codex` |
+
+目标不是把语音转成更漂亮的文字，而是让输入层逐渐适应你真正使用的词。
+
+## 学习闭环
 
 <p align="center">
   <img src="docs/assets/open-typeless-harness-learning-loop.png" alt="Open Typeless Harness learning loop" width="780">
 </p>
 
 ```text
-Voice input
+Speak
   -> ASR transcript
   -> LLM polish with retrieved speech skills
-  -> Insert into focused text field
+  -> Insert into the focused text field
   -> Observe post-insertion edits
-  -> Learn local speech skills
+  -> Save stable local speech skills
 ```
 
-示例：
+## 默认本地
 
-```text
-Inserted: 我想对表说 cold 或者 cold
-Edited:   我想对标说 Claude Code 或 Codex
-Learned:  cold 或者 cold -> Claude Code 或 Codex
-```
-
-## 原则
-
-- **它是输入层，不是自主 agent。** 它帮你把文字写进当前输入框，不应该主动替你执行任务。
-- **从真实改动里学习。** 最好的信号是用户插入后实际修了什么。
-- **默认本地。** 纠错证据和 speech skills 默认保存在本机，除非显式导出或同步。
-- **语境优先，而不是全局替换。** 歧义纠错应该成为 contextual skill，而不是危险的全局 find-and-replace。
+纠错证据和 speech skills 默认留在本机。它是输入层，不是自主 agent：它把文字写进你正在使用的输入框，而不是主动替你执行任务。
 
 ## 状态
 
 Open Typeless Harness 目前是 technical preview，是基于 OpenLess 桌面运行时的 OpenClaudex 实验性 fork/fusion。
 
-当前重点：
-
-- 聚焦输入框口述
-- LLM 润色插入
-- 插入后的改动监控
-- 本地 speech-skill 学习
-- 更安全的语境化纠错记忆
+当前重点是聚焦输入框口述、LLM 润色插入、插入后的改动监控，以及本地 speech-skill 学习。
 
 ## 致谢
 

@@ -5,18 +5,18 @@
 </p>
 
 <p align="center">
-  <strong>Voice input that remembers how you correct it.</strong>
+  <strong>Voice input that learns from the corrections you actually make.</strong>
 </p>
 
 <p align="center">
-  • Speak • Polish • Learn Locally •
+  • Speak • Polish • Insert • Learn Locally •
 </p>
 
 <p align="center">
-  <a href="README.zh.md">中文文档</a> •
-  <a href="#why">Why</a> •
-  <a href="#product-preview">Product Preview</a> •
-  <a href="#how-it-works">How It Works</a>
+  <a href="README.zh.md">中文</a> •
+  <a href="#why-it-exists">Why</a> •
+  <a href="#product-preview">Preview</a> •
+  <a href="#learning-loop">Learning Loop</a>
 </p>
 
 <p align="center">
@@ -26,19 +26,13 @@
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
 </p>
 
-## Why
+## Why It Exists
 
-Speech-to-text is not enough.
+Plain speech-to-text keeps making the same mistakes: product names, project names, mixed Chinese/English terms, and the phrases you always fix right after insertion.
 
-Real voice input fails on the same things again and again: product names, project names, mixed Chinese/English terms, personal phrasing, and the small corrections you make right after the text lands in the input box.
+Open Typeless Harness treats those edits as signal. It transcribes, polishes, inserts into the focused field, then learns from your post-insertion corrections so future dictation better matches your vocabulary.
 
-Open Typeless Harness is built around one idea:
-
-> **Every post-insertion edit is a learning signal.**
-
-You speak naturally. The app transcribes and polishes the text, inserts it into the focused field, then watches how you correct it. Stable correction patterns become local speech skills and are retrieved before later polishing.
-
-The result is a voice input layer that should become more aligned with your vocabulary the more you use it.
+> Every correction after the text lands should make the next insertion better.
 
 ## Product Preview
 
@@ -47,61 +41,51 @@ The result is a voice input layer that should become more aligned with your voca
 </p>
 
 <p align="center">
-  <img src="docs/assets/open-typeless-harness-demo.gif" alt="Open Typeless Harness demo" width="780">
+  <img src="docs/assets/open-typeless-harness-demo.gif" alt="Open Typeless Harness focused-field insertion demo" width="780">
 </p>
 
 <p align="center">
-  <a href="docs/assets/open-typeless-harness-demo.mp4">Download MP4 demo</a>
+  <a href="docs/assets/open-typeless-harness-demo.mp4">Watch MP4 demo</a>
 </p>
 
-## What It Solves
+| Before insertion | After insertion |
+| --- | --- |
+| <img src="docs/assets/open-typeless-harness-real-before.png" alt="Before focused-field insertion" width="390"> | <img src="docs/assets/open-typeless-harness-real-after.png" alt="After focused-field insertion" width="390"> |
 
-- You say `type script`; it should know you mean `TypeScript`.
-- You correct `知呼` to `知乎`; it should remember that.
-- You repeat a product name; it should stop treating it as a one-off ASR mistake.
-- You dictate into any focused field; it should fit into the app you are already using.
+## What It Should Remember
 
-## How It Works
+| You say or receive | You correct to |
+| --- | --- |
+| `type script` | `TypeScript` |
+| `知呼` | `知乎` |
+| `cold 或者 cold` | `Claude Code 或 Codex` |
+
+The goal is not just prettier transcription. The goal is a voice input layer that adapts to the words you actually use.
+
+## Learning Loop
 
 <p align="center">
   <img src="docs/assets/open-typeless-harness-learning-loop.png" alt="Open Typeless Harness learning loop" width="780">
 </p>
 
 ```text
-Voice input
+Speak
   -> ASR transcript
   -> LLM polish with retrieved speech skills
-  -> Insert into focused text field
+  -> Insert into the focused text field
   -> Observe post-insertion edits
-  -> Learn local speech skills
+  -> Save stable local speech skills
 ```
 
-Example:
+## Local By Default
 
-```text
-Inserted: 我想对表说 cold 或者 cold
-Edited:   我想对标说 Claude Code 或 Codex
-Learned:  cold 或者 cold -> Claude Code 或 Codex
-```
-
-## Principles
-
-- **Input layer, not an autonomous agent.** It helps you write into the current field; it should not execute tasks by itself.
-- **Learning from real edits.** The best signal is what the user actually fixes after insertion.
-- **Local by default.** Correction evidence and speech skills are local unless explicitly exported or synced.
-- **Context over global replacement.** Ambiguous corrections should become contextual skills, not unsafe global find-and-replace rules.
+Correction evidence and speech skills stay on the machine by default. The app is an input layer, not an autonomous agent: it writes into the field you are already using instead of taking actions for you.
 
 ## Status
 
 Open Typeless Harness is a technical preview built as an experimental OpenClaudex fork/fusion on top of the OpenLess desktop runtime.
 
-Current focus:
-
-- focused-field dictation
-- LLM-polished insertion
-- post-insertion edit monitoring
-- local speech-skill learning
-- safer contextual correction memory
+The current focus is focused-field dictation, LLM-polished insertion, post-insertion edit monitoring, and local speech-skill learning.
 
 ## Acknowledgements
 
