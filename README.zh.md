@@ -1,6 +1,10 @@
 # Open Typeless Harness
 
 <p align="center">
+  <img src="docs/assets/open-typeless-harness-cover.png" alt="Open Typeless Harness cover" width="780">
+</p>
+
+<p align="center">
   <strong>会从你真实修正里学习的语音输入。</strong>
 </p>
 

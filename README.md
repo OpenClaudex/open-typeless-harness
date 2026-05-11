@@ -1,6 +1,10 @@
 # Open Typeless Harness
 
 <p align="center">
+  <img src="docs/assets/open-typeless-harness-cover.png" alt="Open Typeless Harness cover" width="780">
+</p>
+
+<p align="center">
   <strong>Voice input that learns from the corrections you actually make.</strong>
 </p>
 
