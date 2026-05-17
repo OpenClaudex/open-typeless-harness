@@ -22,6 +22,7 @@ mod learning_probe;
 mod permissions;
 mod persistence;
 mod polish;
+mod provider_health;
 mod qa_hotkey;
 mod recorder;
 mod selection;
@@ -203,6 +204,9 @@ pub fn run() {
             commands::list_history,
             commands::delete_history_entry,
             commands::clear_history,
+            commands::get_learning_dashboard,
+            commands::confirm_learning_candidate,
+            commands::ignore_learning_candidate,
             commands::list_vocab,
             commands::add_vocab,
             commands::remove_vocab,
@@ -212,6 +216,7 @@ pub fn run() {
             commands::start_dictation,
             commands::stop_dictation,
             commands::cancel_dictation,
+            commands::dismiss_capsule,
             commands::handle_window_hotkey_event,
             #[cfg(debug_assertions)]
             commands::inject_hotkey_click_for_dev,

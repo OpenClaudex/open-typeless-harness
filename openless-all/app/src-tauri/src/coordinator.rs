@@ -8,7 +8,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use parking_lot::Mutex;
@@ -401,6 +401,11 @@ impl Coordinator {
 
     pub fn cancel_dictation(&self) {
         cancel_session(&self.inner);
+    }
+
+    pub fn dismiss_capsule(&self) {
+        log::info!("[coord] capsule dismissed");
+        emit_capsule(&self.inner, CapsuleState::Idle, 0.0, 0, None, None);
     }
 
     pub async fn handle_window_hotkey_event(
@@ -1372,8 +1377,12 @@ async fn end_session(inner: &Arc<Inner>) -> Result<(), String> {
                 log::error!("[coord] send last frame failed: {e}");
             }
             match asr.await_final_result().await {
-                Ok(r) => r,
+                Ok(r) => {
+                    crate::provider_health::record_success("asr");
+                    r
+                }
                 Err(e) => {
+                    crate::provider_health::record_failure("asr", e.to_string());
                     log::error!("[coord] await final failed: {e}");
                     emit_capsule(
                         inner,
@@ -1391,8 +1400,12 @@ async fn end_session(inner: &Arc<Inner>) -> Result<(), String> {
             }
         }
         ActiveAsr::Whisper(w) => match w.transcribe().await {
-            Ok(r) => r,
+            Ok(r) => {
+                crate::provider_health::record_success("asr");
+                r
+            }
             Err(e) => {
+                crate::provider_health::record_failure("asr", e.to_string());
                 log::error!("[coord] whisper transcribe failed: {e}");
                 emit_capsule(
                     inner,
@@ -1456,7 +1469,7 @@ async fn end_session(inner: &Arc<Inner>) -> Result<(), String> {
             CapsuleState::Error,
             0.0,
             elapsed,
-            Some("ASR returned empty transcript".to_string()),
+            Some("没有听到内容".to_string()),
             None,
         );
         restore_prepared_windows_ime_session(inner, current_session_id);
@@ -1984,11 +1997,29 @@ async fn polish_or_passthrough(
         }
     }
 
-    match polish_text(&raw.text, mode, hotwords, working_languages, front_app).await {
-        Ok(s) => (s, None),
-        Err(e) => {
+    let result = tokio::time::timeout(
+        Duration::from_millis(POLISH_FAST_PATH_TIMEOUT_MS),
+        polish_text(&raw.text, mode, hotwords, working_languages, front_app),
+    )
+    .await;
+    match result {
+        Ok(Ok(s)) => {
+            crate::provider_health::record_success("llm");
+            (s, None)
+        }
+        Ok(Err(e)) => {
             let reason = e.to_string();
+            crate::provider_health::record_failure("llm", reason.clone());
             log::error!("[coord] polish failed, falling back to raw: {reason}");
+            (raw.text.clone(), Some(reason))
+        }
+        Err(_) => {
+            let reason = "polishTimeoutFastPath".to_string();
+            crate::provider_health::record_failure("llm", reason.clone());
+            log::warn!(
+                "[coord] polish timed out after {}ms, falling back to raw",
+                POLISH_FAST_PATH_TIMEOUT_MS
+            );
             (raw.text.clone(), Some(reason))
         }
     }
@@ -2297,8 +2328,12 @@ async fn end_qa_session(inner: &Arc<Inner>) -> Result<(), String> {
         log::error!("[coord] QA: send last frame failed: {e}");
     }
     let raw = match asr.await_final_result().await {
-        Ok(r) => r,
+        Ok(r) => {
+            crate::provider_health::record_success("asr");
+            r
+        }
         Err(e) => {
+            crate::provider_health::record_failure("asr", e.to_string());
             log::error!("[coord] QA: await final failed: {e}");
             finish_qa_with_error(inner, format!("识别失败: {e}"));
             return Err(e.to_string());
@@ -2747,6 +2782,51 @@ mod tests {
         assert_eq!(state.phase, SessionPhase::Idle);
     }
 
+    #[test]
+    fn terminal_capsule_states_clear_translation_modifier() {
+        let coordinator = Coordinator::new();
+        let terminal_states = [
+            CapsuleState::Idle,
+            CapsuleState::Done,
+            CapsuleState::Cancelled,
+            CapsuleState::Error,
+        ];
+
+        for state in terminal_states {
+            coordinator
+                .inner
+                .translation_modifier_seen
+                .store(true, Ordering::SeqCst);
+            clear_translation_modifier_for_terminal_capsule_state(&coordinator.inner, state);
+            assert!(!coordinator
+                .inner
+                .translation_modifier_seen
+                .load(Ordering::SeqCst));
+        }
+    }
+
+    #[test]
+    fn active_capsule_states_keep_translation_modifier() {
+        let coordinator = Coordinator::new();
+        let active_states = [
+            CapsuleState::Recording,
+            CapsuleState::Transcribing,
+            CapsuleState::Polishing,
+        ];
+
+        for state in active_states {
+            coordinator
+                .inner
+                .translation_modifier_seen
+                .store(true, Ordering::SeqCst);
+            clear_translation_modifier_for_terminal_capsule_state(&coordinator.inner, state);
+            assert!(coordinator
+                .inner
+                .translation_modifier_seen
+                .load(Ordering::SeqCst));
+        }
+    }
+
     #[tokio::test]
     async fn pressed_edge_during_inserting_does_not_start_new_session() {
         let coordinator = Coordinator::new();
@@ -2959,6 +3039,7 @@ fn enabled_phrases(inner: &Arc<Inner>) -> Vec<String> {
 /// 终止态（Done / Cancelled / Error）后延迟 N ms 把胶囊改回 Idle，让浮窗自动消失。
 /// 用户点 ✕ / ✓ / 中途出错 / 按 Esc 都走这里，统一 2 秒。
 const CAPSULE_AUTO_HIDE_DELAY_MS: u64 = 2000;
+const POLISH_FAST_PATH_TIMEOUT_MS: u64 = 1800;
 
 /// begin_session 中各 await 之间的 cancel race 检查结果。
 enum BeginOutcome {
@@ -3313,6 +3394,7 @@ fn emit_capsule(
 ) {
     let app_opt = inner.app.lock().clone();
     let Some(app) = app_opt else { return };
+    clear_translation_modifier_for_terminal_capsule_state(inner, state);
     let payload = CapsulePayload {
         state,
         level,
@@ -3346,6 +3428,17 @@ fn emit_capsule(
     }
 
     let _ = app.emit_to("capsule", "capsule:state", payload);
+}
+
+fn clear_translation_modifier_for_terminal_capsule_state(inner: &Arc<Inner>, state: CapsuleState) {
+    if matches!(
+        state,
+        CapsuleState::Idle | CapsuleState::Done | CapsuleState::Cancelled | CapsuleState::Error
+    ) {
+        inner
+            .translation_modifier_seen
+            .store(false, Ordering::SeqCst);
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

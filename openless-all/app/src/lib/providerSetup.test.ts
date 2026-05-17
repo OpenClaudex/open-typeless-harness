@@ -2,6 +2,19 @@ import {
   areProvidersConfigured,
   shouldShowProviderSetupPrompt,
 } from './providerSetup';
+import type { CredentialsStatus } from './types';
+
+function credentials(
+  volcengineConfigured: boolean,
+  arkConfigured: boolean,
+): CredentialsStatus {
+  return {
+    volcengineConfigured,
+    arkConfigured,
+    asrHealth: { state: 'unknown', checkedAt: null, message: null, consecutiveFailures: 0 },
+    llmHealth: { state: 'unknown', checkedAt: null, message: null, consecutiveFailures: 0 },
+  };
+}
 
 function assertEqual(actual: boolean, expected: boolean, name: string) {
   if (actual !== expected) {
@@ -10,26 +23,26 @@ function assertEqual(actual: boolean, expected: boolean, name: string) {
 }
 
 assertEqual(
-  areProvidersConfigured({ volcengineConfigured: true, arkConfigured: true }),
+  areProvidersConfigured(credentials(true, true)),
   true,
   'configured when ASR and LLM are both ready',
 );
 
 assertEqual(
-  areProvidersConfigured({ volcengineConfigured: false, arkConfigured: true }),
+  areProvidersConfigured(credentials(false, true)),
   false,
   'not configured when ASR provider is missing',
 );
 
 assertEqual(
-  areProvidersConfigured({ volcengineConfigured: true, arkConfigured: false }),
+  areProvidersConfigured(credentials(true, false)),
   false,
   'not configured when LLM provider is missing',
 );
 
 assertEqual(
   shouldShowProviderSetupPrompt(
-    { volcengineConfigured: false, arkConfigured: false },
+    credentials(false, false),
     null,
   ),
   true,
@@ -38,7 +51,7 @@ assertEqual(
 
 assertEqual(
   shouldShowProviderSetupPrompt(
-    { volcengineConfigured: false, arkConfigured: false },
+    credentials(false, false),
     '1',
   ),
   false,
@@ -47,7 +60,7 @@ assertEqual(
 
 assertEqual(
   shouldShowProviderSetupPrompt(
-    { volcengineConfigured: true, arkConfigured: true },
+    credentials(true, true),
     null,
   ),
   false,

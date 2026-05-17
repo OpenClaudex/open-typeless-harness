@@ -20,6 +20,8 @@ use crate::edit_monitor::EditMonitorSession;
 
 const DEFAULT_LEARNING_FILE: &str = "opentypeless-learning-candidates.jsonl";
 const DEFAULT_SKILL_FILE: &str = "opentypeless-speech-skills.json";
+const MAX_HIGH_CONFIDENCE_SPAN_CHARS: usize = 8;
+const MIN_HIGH_CONFIDENCE_SHARED_CONTEXT_CHARS: usize = 8;
 const MAX_MEDIUM_CONFIDENCE_SPAN_CHARS: usize = 80;
 const MAX_SKILLS: usize = 200;
 const MAX_SKILLS_FOR_PROMPT: usize = 8;
@@ -60,6 +62,7 @@ struct SpeechSkillDraft {
     correction: String,
     context: Vec<String>,
     kind: &'static str,
+    confidence: &'static str,
     evidence: SkillEvidence,
 }
 
@@ -73,7 +76,7 @@ pub fn record_final_candidate(
         return;
     }
 
-    let Some((payload, skill_drafts)) = build_candidate_payload(
+    let Some((payload, skill_drafts, auto_apply)) = build_candidate_payload(
         &session.original_text,
         &session.inserted_text,
         initial_field_value,
@@ -86,7 +89,33 @@ pub fn record_final_candidate(
     };
 
     write_jsonl(payload);
-    upsert_speech_skills(skill_drafts);
+    if auto_apply {
+        upsert_speech_skills(skill_drafts);
+    }
+}
+
+pub fn record_accepted_trajectory(
+    session: &EditMonitorSession,
+    target_pid: i32,
+    final_field_value: &str,
+) {
+    if !enabled() || !field_contains_inserted_text(final_field_value, &session.inserted_text) {
+        return;
+    }
+
+    let hotwords = weak_hotwords(&session.original_text, &session.inserted_text);
+    write_jsonl(json!({
+        "event": "accepted_trajectory",
+        "timestampMs": timestamp_ms(),
+        "source": "edit_monitor_timeout_no_edit",
+        "quality": "weak",
+        "status": "accepted",
+        "targetPid": target_pid,
+        "originalText": session.original_text,
+        "insertedText": session.inserted_text,
+        "finalFieldValue": final_field_value,
+        "hotwords": hotwords,
+    }));
 }
 
 fn build_candidate_payload(
@@ -96,8 +125,9 @@ fn build_candidate_payload(
     final_text: &str,
     target_pid: i32,
     timestamp_ms: u128,
-) -> Option<(Value, Vec<SpeechSkillDraft>)> {
+) -> Option<(Value, Vec<SpeechSkillDraft>, bool)> {
     let correction = extract_correction(initial_field_value, final_text)?;
+    let auto_apply = should_auto_apply(correction.confidence);
     let skill_drafts = build_speech_skill_drafts(
         &correction,
         original_text,
@@ -112,7 +142,7 @@ fn build_candidate_payload(
             "event": "correction_candidate",
             "timestampMs": timestamp_ms,
             "source": "edit_monitor_final",
-            "status": "candidate",
+            "status": if auto_apply { "auto_learned" } else { "needs_review" },
             "targetPid": target_pid,
             "originalText": original_text,
             "insertedText": inserted_text,
@@ -130,6 +160,7 @@ fn build_candidate_payload(
             },
         }),
         skill_drafts,
+        auto_apply,
     ))
 }
 
@@ -230,11 +261,12 @@ fn build_speech_skill_drafts(
     let (skill_from, skill_to) = expanded_skill_window(initial_field_value, final_text, correction);
     extract_skill_pairs(&skill_from, &skill_to)
         .into_iter()
-        .map(|(trigger, correction, kind)| SpeechSkillDraft {
+        .map(|(trigger, skill_correction, kind)| SpeechSkillDraft {
             trigger,
-            correction,
+            correction: skill_correction,
             context: context.clone(),
             kind,
+            confidence: correction.confidence,
             evidence: evidence.clone(),
         })
         .collect()
@@ -557,6 +589,19 @@ fn context_terms(parts: &[&str]) -> Vec<String> {
     terms
 }
 
+fn weak_hotwords(original_text: &str, inserted_text: &str) -> Vec<String> {
+    context_terms(&[original_text, inserted_text])
+        .into_iter()
+        .filter(|term| term.chars().count() <= 32)
+        .take(8)
+        .collect()
+}
+
+fn field_contains_inserted_text(field_value: &str, inserted_text: &str) -> bool {
+    let inserted = inserted_text.trim();
+    !inserted.is_empty() && field_value.contains(inserted)
+}
+
 fn is_cjk(ch: char) -> bool {
     ('\u{4e00}'..='\u{9fff}').contains(&ch)
 }
@@ -619,12 +664,163 @@ fn confidence_label(
     let changed_span = from_chars + to_chars;
     let comparable_lengths = initial_chars.max(final_chars) <= initial_chars.min(final_chars) * 3;
 
-    if comparable_lengths && shared_context > 0 && changed_span <= MAX_MEDIUM_CONFIDENCE_SPAN_CHARS
+    if comparable_lengths
+        && shared_context >= MIN_HIGH_CONFIDENCE_SHARED_CONTEXT_CHARS
+        && changed_span <= MAX_HIGH_CONFIDENCE_SPAN_CHARS
+    {
+        "high"
+    } else if comparable_lengths
+        && shared_context > 0
+        && changed_span <= MAX_MEDIUM_CONFIDENCE_SPAN_CHARS
     {
         "medium"
     } else {
         "low"
     }
+}
+
+fn should_auto_apply(confidence: &str) -> bool {
+    matches!(confidence, "high")
+}
+
+pub fn confirm_learning_candidate(candidate_timestamp_ms: u64) -> anyhow::Result<()> {
+    if matches!(
+        latest_candidate_decision(candidate_timestamp_ms)?,
+        Some("confirmed" | "ignored")
+    ) {
+        return Ok(());
+    }
+    let Some(candidate) = find_learning_candidate(candidate_timestamp_ms)? else {
+        anyhow::bail!("learning candidate not found");
+    };
+    let mut drafts = skill_drafts_from_candidate(&candidate)?;
+    for draft in &mut drafts {
+        draft.confidence = max_confidence(draft.confidence, "medium");
+    }
+    upsert_speech_skills(drafts);
+    write_learning_decision(candidate_timestamp_ms, "confirmed");
+    Ok(())
+}
+
+pub fn ignore_learning_candidate(candidate_timestamp_ms: u64) -> anyhow::Result<()> {
+    write_learning_decision(candidate_timestamp_ms, "ignored");
+    Ok(())
+}
+
+fn latest_candidate_decision(candidate_timestamp_ms: u64) -> anyhow::Result<Option<&'static str>> {
+    let mut decision = None;
+    for value in read_learning_values()? {
+        if value.get("event").and_then(Value::as_str) != Some("learning_candidate_decision") {
+            continue;
+        }
+        if value.get("candidateTimestampMs").and_then(Value::as_u64) != Some(candidate_timestamp_ms)
+        {
+            continue;
+        }
+        decision = match value.get("decision").and_then(Value::as_str) {
+            Some("confirmed") => Some("confirmed"),
+            Some("ignored") => Some("ignored"),
+            _ => decision,
+        };
+    }
+    Ok(decision)
+}
+
+fn find_learning_candidate(candidate_timestamp_ms: u64) -> anyhow::Result<Option<Value>> {
+    Ok(read_learning_values()?.into_iter().find(|value| {
+        value.get("event").and_then(Value::as_str) == Some("correction_candidate")
+            && value.get("timestampMs").and_then(Value::as_u64) == Some(candidate_timestamp_ms)
+    }))
+}
+
+fn read_learning_values() -> anyhow::Result<Vec<Value>> {
+    let Some(path) = jsonl_path() else {
+        return Ok(Vec::new());
+    };
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let contents = std::fs::read_to_string(path)?;
+    Ok(contents
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .collect())
+}
+
+fn skill_drafts_from_candidate(value: &Value) -> anyhow::Result<Vec<SpeechSkillDraft>> {
+    let correction_value = value
+        .get("correction")
+        .ok_or_else(|| anyhow::anyhow!("candidate missing correction"))?;
+    let correction = Correction {
+        kind: match correction_value.get("kind").and_then(Value::as_str) {
+            Some("insertion") => "insertion",
+            Some("deletion") => "deletion",
+            _ => "replacement",
+        },
+        from: correction_value
+            .get("from")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        to: correction_value
+            .get("to")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        prefix_chars: correction_value
+            .get("prefixChars")
+            .and_then(Value::as_u64)
+            .unwrap_or_default() as usize,
+        suffix_chars: correction_value
+            .get("suffixChars")
+            .and_then(Value::as_u64)
+            .unwrap_or_default() as usize,
+        from_chars: correction_value
+            .get("fromChars")
+            .and_then(Value::as_u64)
+            .unwrap_or_default() as usize,
+        to_chars: correction_value
+            .get("toChars")
+            .and_then(Value::as_u64)
+            .unwrap_or_default() as usize,
+        confidence: match correction_value.get("confidence").and_then(Value::as_str) {
+            Some("medium") => "medium",
+            Some("high") => "high",
+            _ => "low",
+        },
+    };
+    Ok(build_speech_skill_drafts(
+        &correction,
+        value
+            .get("originalText")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        value
+            .get("insertedText")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        value
+            .get("initialFieldValue")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        value
+            .get("finalText")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+        value
+            .get("targetPid")
+            .and_then(Value::as_i64)
+            .unwrap_or_default() as i32,
+    ))
+}
+
+fn write_learning_decision(candidate_timestamp_ms: u64, decision: &'static str) {
+    write_jsonl(json!({
+        "event": "learning_candidate_decision",
+        "timestampMs": timestamp_ms(),
+        "candidateTimestampMs": candidate_timestamp_ms,
+        "decision": decision,
+    }));
 }
 
 fn write_jsonl(payload: Value) {
@@ -763,7 +959,8 @@ fn upsert_speech_skills(drafts: Vec<SpeechSkillDraft>) {
             skill.correction = draft.correction;
             skill.kind = draft.kind.to_string();
             skill.evidence_count = skill.evidence_count.saturating_add(1);
-            skill.confidence = promoted_confidence(&skill.confidence, skill.evidence_count);
+            let confidence = max_confidence(&skill.confidence, draft.confidence);
+            skill.confidence = promoted_confidence(confidence, skill.evidence_count);
             merge_context(&mut skill.context, draft.context);
             skill.updated_at = now.clone();
             skill.last_evidence = draft.evidence;
@@ -778,7 +975,7 @@ fn upsert_speech_skills(drafts: Vec<SpeechSkillDraft>) {
                 correction: draft.correction,
                 context: draft.context,
                 kind: draft.kind.to_string(),
-                confidence: "low".to_string(),
+                confidence: draft.confidence.to_string(),
                 evidence_count: 1,
                 last_evidence: draft.evidence,
                 created_at: now.clone(),
@@ -831,14 +1028,41 @@ fn merge_context(existing: &mut Vec<String>, incoming: Vec<String>) {
 }
 
 fn promoted_confidence(current: &str, evidence_count: u32) -> String {
-    if evidence_count >= 2 || current == "medium" {
+    if current == "high" || evidence_count >= 3 {
+        "high".to_string()
+    } else if current == "medium" || evidence_count >= 2 {
         "medium".to_string()
     } else {
         "low".to_string()
     }
 }
 
+fn max_confidence(left: &str, right: &str) -> &'static str {
+    let rank = |value: &str| match value {
+        "high" => 3,
+        "medium" => 2,
+        _ => 1,
+    };
+    if rank(left) >= rank(right) {
+        match left {
+            "high" => "high",
+            "medium" => "medium",
+            _ => "low",
+        }
+    } else {
+        match right {
+            "high" => "high",
+            "medium" => "medium",
+            _ => "low",
+        }
+    }
+}
+
 fn skill_score(skill: &SpeechSkill, raw_text: &str) -> i32 {
+    if skill.confidence == "low" && skill.evidence_count < 2 {
+        return 0;
+    }
+
     let raw = raw_text.to_lowercase();
     let trigger = skill.trigger.to_lowercase();
     let trigger_hit = raw.contains(&trigger);
@@ -922,7 +1146,7 @@ mod tests {
         assert_eq!(correction.to, "整");
         assert_eq!(correction.prefix_chars, 4);
         assert_eq!(correction.suffix_chars, 4);
-        assert_eq!(correction.confidence, "medium");
+        assert_eq!(correction.confidence, "high");
     }
 
     #[test]
@@ -941,7 +1165,7 @@ mod tests {
         assert_eq!(correction.kind, "insertion");
         assert_eq!(correction.from, "");
         assert_eq!(correction.to, "完整的");
-        assert_eq!(correction.confidence, "medium");
+        assert_eq!(correction.confidence, "high");
     }
 
     #[test]
@@ -983,7 +1207,7 @@ mod tests {
     }
 
     #[test]
-    fn records_candidate_and_speech_skill_to_configured_files() {
+    fn medium_confidence_candidate_waits_for_user_confirmation() {
         let _guard = ENV_LOCK.lock().unwrap();
         let path = std::env::temp_dir().join(format!(
             "opentypeless-learning-candidates-{}-{}.jsonl",
@@ -1017,19 +1241,113 @@ mod tests {
         let value: Value = serde_json::from_str(contents.trim()).unwrap();
         assert_eq!(value["event"], "correction_candidate");
         assert_eq!(value["source"], "edit_monitor_final");
-        assert_eq!(value["status"], "candidate");
+        assert_eq!(value["status"], "needs_review");
         assert_eq!(value["targetPid"], 42);
         assert_eq!(value["originalText"], "我想对表说 col code。");
         assert_eq!(value["insertedText"], "我想对表说 col code。");
         assert_eq!(value["initialFieldValue"], "我想对表说 col code。");
         assert_eq!(value["finalText"], "我想对标说 Claude Code。");
         assert_eq!(value["correction"]["kind"], "replacement");
+        assert_eq!(value["correction"]["confidence"], "medium");
+        assert!(!skill_path.exists());
+
+        let timestamp_ms = value["timestampMs"].as_u64().unwrap();
+        confirm_learning_candidate(timestamp_ms).unwrap();
 
         let skills: Vec<SpeechSkill> =
             serde_json::from_str(&std::fs::read_to_string(&skill_path).unwrap()).unwrap();
         assert!(skills
             .iter()
             .any(|skill| skill.trigger == "col code" && skill.correction == "Claude Code"));
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&skill_path);
+        std::env::remove_var("OPENTYPELESS_LEARNING_CANDIDATES_PATH");
+        std::env::remove_var("OPENTYPELESS_SPEECH_SKILLS_PATH");
+    }
+
+    #[test]
+    fn records_accepted_trajectory_without_creating_skill() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "opentypeless-learning-candidates-{}-{}.jsonl",
+            std::process::id(),
+            "accepted"
+        ));
+        let skill_path = std::env::temp_dir().join(format!(
+            "opentypeless-speech-skills-{}-{}.json",
+            std::process::id(),
+            "accepted"
+        ));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&skill_path);
+        std::env::set_var("OPENTYPELESS_LEARNING_CANDIDATES_PATH", &path);
+        std::env::set_var("OPENTYPELESS_SPEECH_SKILLS_PATH", &skill_path);
+        std::env::remove_var("OPENTYPELESS_LEARNING_CANDIDATES");
+
+        let session = EditMonitorSession {
+            target_pid: Some(42),
+            original_text: "看看 Claude Opus 和 GPT-5.5。".into(),
+            inserted_text: "看看 Claude Opus 和 GPT-5.5。".into(),
+        };
+        record_accepted_trajectory(&session, 42, "前文。看看 Claude Opus 和 GPT-5.5。");
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let value: Value = serde_json::from_str(contents.trim()).unwrap();
+        assert_eq!(value["event"], "accepted_trajectory");
+        assert_eq!(value["quality"], "weak");
+        assert_eq!(value["status"], "accepted");
+        assert_eq!(value["targetPid"], 42);
+        assert!(value["hotwords"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|term| term.as_str() == Some("Claude Opus")));
+        assert!(!skill_path.exists());
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&skill_path);
+        std::env::remove_var("OPENTYPELESS_LEARNING_CANDIDATES_PATH");
+        std::env::remove_var("OPENTYPELESS_SPEECH_SKILLS_PATH");
+    }
+
+    #[test]
+    fn low_confidence_candidate_waits_for_user_confirmation() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "opentypeless-learning-candidates-{}-{}.jsonl",
+            std::process::id(),
+            "confirm"
+        ));
+        let skill_path = std::env::temp_dir().join(format!(
+            "opentypeless-speech-skills-{}-{}.json",
+            std::process::id(),
+            "confirm"
+        ));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&skill_path);
+        std::env::set_var("OPENTYPELESS_LEARNING_CANDIDATES_PATH", &path);
+        std::env::set_var("OPENTYPELESS_SPEECH_SKILLS_PATH", &skill_path);
+        std::env::remove_var("OPENTYPELESS_LEARNING_CANDIDATES");
+
+        let session = EditMonitorSession {
+            target_pid: Some(42),
+            original_text: "cold".into(),
+            inserted_text: "cold".into(),
+        };
+        record_final_candidate(&session, 42, "cold", "Claude Code");
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let value: Value = serde_json::from_str(contents.trim()).unwrap();
+        assert_eq!(value["status"], "needs_review");
+        assert!(!skill_path.exists());
+
+        let timestamp_ms = value["timestampMs"].as_u64().unwrap();
+        confirm_learning_candidate(timestamp_ms).unwrap();
+
+        let skills: Vec<SpeechSkill> =
+            serde_json::from_str(&std::fs::read_to_string(&skill_path).unwrap()).unwrap();
+        assert!(!skills.is_empty());
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(&skill_path);
@@ -1067,6 +1385,11 @@ mod tests {
             "你想对表，不如说 col code 或 code。",
             "我想对标说 Claude Code 或 Codex。",
         );
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let value: Value = serde_json::from_str(contents.trim()).unwrap();
+        assert_eq!(value["status"], "needs_review");
+        confirm_learning_candidate(value["timestampMs"].as_u64().unwrap()).unwrap();
 
         let skill_block = speech_skill_prompt_block("我想对表一下 col code 和 code").unwrap();
         assert!(skill_block.contains("Claude Code"));
@@ -1113,6 +1436,11 @@ mod tests {
             "我想对表说 cold 或者 cold。😔",
             "我想对标说 Claude Code 或 Codex",
         );
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let value: Value = serde_json::from_str(contents.trim()).unwrap();
+        assert_eq!(value["status"], "needs_review");
+        confirm_learning_candidate(value["timestampMs"].as_u64().unwrap()).unwrap();
 
         let skills: Vec<SpeechSkill> =
             serde_json::from_str(&std::fs::read_to_string(&skill_path).unwrap()).unwrap();

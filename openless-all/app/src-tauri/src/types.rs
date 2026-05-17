@@ -490,6 +490,33 @@ pub struct CapsulePayload {
 pub struct CredentialsStatus {
     pub volcengine_configured: bool,
     pub ark_configured: bool,
+    pub asr_health: ProviderHealth,
+    pub llm_health: ProviderHealth,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ProviderHealthState {
+    NotConfigured,
+    Unknown,
+    Ok,
+    Unstable,
+    Down,
+}
+
+impl Default for ProviderHealthState {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderHealth {
+    pub state: ProviderHealthState,
+    pub checked_at: Option<String>,
+    pub message: Option<String>,
+    pub consecutive_failures: u32,
 }
 
 /// Today's metrics shown on the Overview tab.

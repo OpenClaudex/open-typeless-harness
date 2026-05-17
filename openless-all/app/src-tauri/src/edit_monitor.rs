@@ -250,7 +250,7 @@ mod macos {
 
             if started.elapsed() >= Duration::from_millis(MONITOR_TIMEOUT_MS) {
                 log::debug!("[edit-monitor] timeout");
-                record_final_candidate_if_changed(
+                record_learning_outcome(
                     &session,
                     target_pid,
                     &initial_value,
@@ -272,6 +272,27 @@ mod macos {
 
             while let Ok(current) = rx.try_recv() {
                 if current != last_value {
+                    if should_stop_on_unrelated_value(
+                        &session,
+                        &initial_value,
+                        &last_value,
+                        &current,
+                    ) {
+                        record_learning_outcome(
+                            &session,
+                            target_pid,
+                            &initial_value,
+                            &last_value,
+                            observed_change,
+                            generation,
+                        );
+                        write_unrelated_value_event(&session, target_pid, generation, &current);
+                        unsafe {
+                            ax::release_observer(observer);
+                            ax::release_element(focused);
+                        }
+                        return Ok(());
+                    }
                     last_value = current.clone();
                     observed_change = true;
                     emit_change(app.as_ref(), &session, target_pid, current, generation);
@@ -283,6 +304,29 @@ mod macos {
                 match query_focused_value(target_pid)? {
                     Some(current) => {
                         if current != last_value {
+                            if should_stop_on_unrelated_value(
+                                &session,
+                                &initial_value,
+                                &last_value,
+                                &current,
+                            ) {
+                                record_learning_outcome(
+                                    &session,
+                                    target_pid,
+                                    &initial_value,
+                                    &last_value,
+                                    observed_change,
+                                    generation,
+                                );
+                                write_unrelated_value_event(
+                                    &session, target_pid, generation, &current,
+                                );
+                                unsafe {
+                                    ax::release_observer(observer);
+                                    ax::release_element(focused);
+                                }
+                                return Ok(());
+                            }
                             last_value = current.clone();
                             observed_change = true;
                             emit_change(app.as_ref(), &session, target_pid, current, generation);
@@ -290,7 +334,7 @@ mod macos {
                     }
                     None => {
                         log::debug!("[edit-monitor] target field disappeared");
-                        record_final_candidate_if_changed(
+                        record_learning_outcome(
                             &session,
                             target_pid,
                             &initial_value,
@@ -341,15 +385,16 @@ mod macos {
                 value
             }
             Err(err) => {
+                let error = err.to_string();
                 write_event(
                     "initial_query_failed",
                     &session,
                     target_pid,
                     json!({
-                        "error": err.to_string(),
+                        "error": error,
                     }),
                 );
-                return Err(err);
+                return keyboard_fallback_monitor(target_pid, session, generation, error).await;
             }
         };
         let started = tokio::time::Instant::now();
@@ -363,7 +408,7 @@ mod macos {
 
             if started.elapsed() >= Duration::from_millis(MONITOR_TIMEOUT_MS) {
                 log::debug!("[edit-monitor] timeout");
-                record_final_candidate_if_changed(
+                record_learning_outcome(
                     &session,
                     target_pid,
                     &initial_value,
@@ -383,7 +428,7 @@ mod macos {
                 Some(value) => value,
                 None => {
                     log::debug!("[edit-monitor] target field disappeared");
-                    record_final_candidate_if_changed(
+                    record_learning_outcome(
                         &session,
                         target_pid,
                         &initial_value,
@@ -397,11 +442,241 @@ mod macos {
             };
 
             if current != last_value {
+                if should_stop_on_unrelated_value(&session, &initial_value, &last_value, &current) {
+                    record_learning_outcome(
+                        &session,
+                        target_pid,
+                        &initial_value,
+                        &last_value,
+                        observed_change,
+                        generation,
+                    );
+                    write_unrelated_value_event(&session, target_pid, generation, &current);
+                    return Ok(());
+                }
                 last_value = current.clone();
                 observed_change = true;
                 emit_change(app.as_ref(), &session, target_pid, current, generation);
             }
         }
+    }
+
+    async fn keyboard_fallback_monitor(
+        target_pid: i32,
+        session: EditMonitorSession,
+        generation: u64,
+        reason: String,
+    ) -> anyhow::Result<()> {
+        tokio::task::spawn_blocking(move || {
+            run_keyboard_fallback_monitor(target_pid, session, generation, reason)
+        })
+        .await?
+    }
+
+    fn run_keyboard_fallback_monitor(
+        target_pid: i32,
+        session: EditMonitorSession,
+        generation: u64,
+        reason: String,
+    ) -> anyhow::Result<()> {
+        let (tx, rx) = mpsc::channel();
+        let _tap = match keyboard_fallback::EventTap::new(tx) {
+            Ok(tap) => tap,
+            Err(err) => {
+                write_event(
+                    "keyboard_fallback_unavailable",
+                    &session,
+                    target_pid,
+                    json!({
+                        "generation": generation,
+                        "reason": reason,
+                        "error": err.to_string(),
+                    }),
+                );
+                return Err(err);
+            }
+        };
+
+        write_event(
+            "keyboard_fallback_start",
+            &session,
+            target_pid,
+            json!({
+                "generation": generation,
+                "reason": reason,
+                "timeoutMs": MONITOR_TIMEOUT_MS,
+                "scope": "target_frontmost_keydown",
+                "confidence": "low",
+            }),
+        );
+
+        let started = std::time::Instant::now();
+        let mut recorded_events = 0u32;
+        loop {
+            if stop_if_superseded(generation, &session, target_pid) {
+                return Ok(());
+            }
+
+            if started.elapsed() >= Duration::from_millis(MONITOR_TIMEOUT_MS) {
+                write_event(
+                    "keyboard_fallback_timeout",
+                    &session,
+                    target_pid,
+                    json!({
+                        "generation": generation,
+                        "recordedEvents": recorded_events,
+                    }),
+                );
+                return Ok(());
+            }
+
+            unsafe {
+                keyboard_fallback::run_loop_slice(0.05);
+            }
+
+            while let Ok(event) = rx.try_recv() {
+                let frontmost_pid = crate::edit_monitor::capture_target_pid();
+                if frontmost_pid != Some(target_pid) {
+                    continue;
+                }
+                recorded_events += 1;
+                write_event(
+                    "keyboard_fallback_event",
+                    &session,
+                    target_pid,
+                    keyboard_fallback_event_details(event, frontmost_pid, generation),
+                );
+            }
+        }
+    }
+
+    fn keyboard_fallback_event_details(
+        event: keyboard_fallback::KeyEvent,
+        frontmost_pid: Option<i32>,
+        generation: u64,
+    ) -> Value {
+        json!({
+            "generation": generation,
+            "scope": "target_frontmost_keydown",
+            "confidence": "low",
+            "frontmostPid": frontmost_pid,
+            "keycode": event.keycode,
+            "keyLabel": keycode_label(event.keycode),
+            "text": event.text,
+            "modifiers": modifier_names(event.flags),
+        })
+    }
+
+    fn keycode_label(keycode: i64) -> &'static str {
+        match keycode {
+            36 => "return",
+            48 => "tab",
+            49 => "space",
+            51 => "backspace",
+            53 => "escape",
+            117 => "delete",
+            123 => "left",
+            124 => "right",
+            125 => "down",
+            126 => "up",
+            _ => "key",
+        }
+    }
+
+    fn modifier_names(flags: u64) -> Vec<&'static str> {
+        const SHIFT: u64 = 0x0002_0000;
+        const CONTROL: u64 = 0x0004_0000;
+        const OPTION: u64 = 0x0008_0000;
+        const COMMAND: u64 = 0x0010_0000;
+        const FN: u64 = 0x0080_0000;
+
+        let mut names = Vec::new();
+        if flags & SHIFT != 0 {
+            names.push("shift");
+        }
+        if flags & CONTROL != 0 {
+            names.push("control");
+        }
+        if flags & OPTION != 0 {
+            names.push("option");
+        }
+        if flags & COMMAND != 0 {
+            names.push("command");
+        }
+        if flags & FN != 0 {
+            names.push("fn");
+        }
+        names
+    }
+
+    fn should_stop_on_unrelated_value(
+        session: &EditMonitorSession,
+        initial_value: &str,
+        last_value: &str,
+        current: &str,
+    ) -> bool {
+        if current.trim().is_empty() {
+            return true;
+        }
+
+        !values_are_related(initial_value, current)
+            && !values_are_related(last_value, current)
+            && !values_are_related(&session.inserted_text, current)
+    }
+
+    fn values_are_related(left: &str, right: &str) -> bool {
+        let left = left.trim();
+        let right = right.trim();
+        if left.is_empty() || right.is_empty() {
+            return false;
+        }
+        if left.contains(right) || right.contains(left) {
+            return true;
+        }
+
+        let shared = shared_edge_chars(left, right);
+        let shorter = left.chars().count().min(right.chars().count());
+        let min_shared = shorter.min(4).max(2);
+        shared >= min_shared
+    }
+
+    fn shared_edge_chars(left: &str, right: &str) -> usize {
+        let left_chars: Vec<char> = left.chars().collect();
+        let right_chars: Vec<char> = right.chars().collect();
+        let prefix = left_chars
+            .iter()
+            .zip(right_chars.iter())
+            .take_while(|(left, right)| left == right)
+            .count();
+        let max_suffix = left_chars
+            .len()
+            .min(right_chars.len())
+            .saturating_sub(prefix);
+        let suffix = left_chars
+            .iter()
+            .rev()
+            .zip(right_chars.iter().rev())
+            .take(max_suffix)
+            .take_while(|(left, right)| left == right)
+            .count();
+        prefix + suffix
+    }
+
+    fn write_unrelated_value_event(
+        session: &EditMonitorSession,
+        target_pid: i32,
+        generation: u64,
+        current: &str,
+    ) {
+        write_event(
+            "target_field_unrelated",
+            session,
+            target_pid,
+            json!({
+                "generation": generation,
+                "fieldChars": current.chars().count(),
+            }),
+        );
     }
 
     fn stop_if_superseded(generation: u64, session: &EditMonitorSession, target_pid: i32) -> bool {
@@ -456,7 +731,7 @@ mod macos {
         write_observation(session, target_pid, &current);
     }
 
-    fn record_final_candidate_if_changed(
+    fn record_learning_outcome(
         session: &EditMonitorSession,
         target_pid: i32,
         initial_value: &str,
@@ -464,19 +739,20 @@ mod macos {
         observed_change: bool,
         generation: u64,
     ) {
-        if !observed_change {
-            return;
-        }
         if !is_current_generation(generation) {
             return;
         }
 
-        crate::learning_probe::record_final_candidate(
-            session,
-            target_pid,
-            initial_value,
-            final_value,
-        );
+        if observed_change {
+            crate::learning_probe::record_final_candidate(
+                session,
+                target_pid,
+                initial_value,
+                final_value,
+            );
+        } else {
+            crate::learning_probe::record_accepted_trajectory(session, target_pid, final_value);
+        }
     }
 
     pub fn write_skip_event(session: &EditMonitorSession, reason: &str) {
@@ -1135,6 +1411,204 @@ mod macos {
         }
     }
 
+    mod keyboard_fallback {
+        use std::ffi::c_void;
+        use std::sync::mpsc::Sender;
+
+        #[derive(Debug)]
+        pub(super) struct KeyEvent {
+            pub keycode: i64,
+            pub flags: u64,
+            pub text: Option<String>,
+        }
+
+        #[repr(C)]
+        struct OpaqueCgEvent(c_void);
+        type CgEventRef = *mut OpaqueCgEvent;
+
+        #[repr(C)]
+        struct OpaqueCfMachPort(c_void);
+        type CfMachPortRef = *mut OpaqueCfMachPort;
+
+        #[repr(C)]
+        struct OpaqueCfRunLoop(c_void);
+        type CfRunLoopRef = *mut OpaqueCfRunLoop;
+
+        #[repr(C)]
+        struct OpaqueCfRunLoopSource(c_void);
+        type CfRunLoopSourceRef = *mut OpaqueCfRunLoopSource;
+
+        type CfStringRef = *const c_void;
+        type CfAllocatorRef = *const c_void;
+        type CfTypeRef = *const c_void;
+        type CgEventMask = u64;
+        type CgEventType = u32;
+        type CgEventTapLocation = u32;
+        type CgEventTapPlacement = u32;
+        type CgEventTapOptions = u32;
+        type CgEventField = u32;
+        type CgEventFlags = u64;
+
+        const SESSION_EVENT_TAP: CgEventTapLocation = 1;
+        const HEAD_INSERT: CgEventTapPlacement = 0;
+        const TAP_OPTION_LISTEN_ONLY: CgEventTapOptions = 1;
+        const KEY_DOWN: CgEventType = 10;
+        const KEYBOARD_EVENT_KEYCODE: CgEventField = 9;
+        const MAX_UNICODE_CHARS: usize = 8;
+
+        type CgEventTapCallBack = extern "C" fn(
+            proxy: *mut c_void,
+            event_type: CgEventType,
+            event: CgEventRef,
+            user_info: *mut c_void,
+        ) -> CgEventRef;
+
+        #[link(name = "CoreGraphics", kind = "framework")]
+        extern "C" {
+            fn CGEventTapCreate(
+                tap: CgEventTapLocation,
+                place: CgEventTapPlacement,
+                options: CgEventTapOptions,
+                events_of_interest: CgEventMask,
+                callback: CgEventTapCallBack,
+                user_info: *mut c_void,
+            ) -> CfMachPortRef;
+            fn CGEventTapEnable(tap: CfMachPortRef, enable: bool);
+            fn CGEventGetIntegerValueField(event: CgEventRef, field: CgEventField) -> i64;
+            fn CGEventGetFlags(event: CgEventRef) -> CgEventFlags;
+            fn CGEventKeyboardGetUnicodeString(
+                event: CgEventRef,
+                max_string_length: usize,
+                actual_string_length: *mut usize,
+                unicode_string: *mut u16,
+            );
+        }
+
+        #[link(name = "CoreFoundation", kind = "framework")]
+        extern "C" {
+            static kCFRunLoopDefaultMode: CfStringRef;
+
+            fn CFMachPortCreateRunLoopSource(
+                allocator: CfAllocatorRef,
+                port: CfMachPortRef,
+                order: isize,
+            ) -> CfRunLoopSourceRef;
+            fn CFMachPortInvalidate(port: CfMachPortRef);
+            fn CFRelease(cf: CfTypeRef);
+            fn CFRunLoopAddSource(rl: CfRunLoopRef, source: CfRunLoopSourceRef, mode: CfStringRef);
+            fn CFRunLoopGetCurrent() -> CfRunLoopRef;
+            fn CFRunLoopRunInMode(
+                mode: CfStringRef,
+                seconds: f64,
+                return_after_source_handled: u8,
+            ) -> i32;
+        }
+
+        struct CallbackContext {
+            tx: Sender<KeyEvent>,
+        }
+
+        pub(super) struct EventTap {
+            tap: CfMachPortRef,
+            source: CfRunLoopSourceRef,
+            context: *mut CallbackContext,
+        }
+
+        impl EventTap {
+            pub fn new(tx: Sender<KeyEvent>) -> anyhow::Result<Self> {
+                let context = Box::into_raw(Box::new(CallbackContext { tx }));
+                unsafe {
+                    let mask = 1u64 << KEY_DOWN;
+                    let tap = CGEventTapCreate(
+                        SESSION_EVENT_TAP,
+                        HEAD_INSERT,
+                        TAP_OPTION_LISTEN_ONLY,
+                        mask,
+                        tap_callback,
+                        context as *mut c_void,
+                    );
+                    if tap.is_null() {
+                        let _ = Box::from_raw(context);
+                        anyhow::bail!("keyboard fallback event tap unavailable");
+                    }
+
+                    let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
+                    if source.is_null() {
+                        CFMachPortInvalidate(tap);
+                        CFRelease(tap as CfTypeRef);
+                        let _ = Box::from_raw(context);
+                        anyhow::bail!("keyboard fallback run loop source unavailable");
+                    }
+
+                    CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
+                    CGEventTapEnable(tap, true);
+                    Ok(Self {
+                        tap,
+                        source,
+                        context,
+                    })
+                }
+            }
+        }
+
+        impl Drop for EventTap {
+            fn drop(&mut self) {
+                unsafe {
+                    CGEventTapEnable(self.tap, false);
+                    CFMachPortInvalidate(self.tap);
+                    CFRelease(self.source as CfTypeRef);
+                    CFRelease(self.tap as CfTypeRef);
+                    let _ = Box::from_raw(self.context);
+                }
+            }
+        }
+
+        pub(super) unsafe fn run_loop_slice(seconds: f64) {
+            let _ = CFRunLoopRunInMode(kCFRunLoopDefaultMode, seconds, 1);
+        }
+
+        extern "C" fn tap_callback(
+            _proxy: *mut c_void,
+            event_type: CgEventType,
+            event: CgEventRef,
+            user_info: *mut c_void,
+        ) -> CgEventRef {
+            if user_info.is_null() || event_type != KEY_DOWN {
+                return event;
+            }
+
+            unsafe {
+                let context = &*(user_info as *const CallbackContext);
+                let keycode = CGEventGetIntegerValueField(event, KEYBOARD_EVENT_KEYCODE);
+                let flags = CGEventGetFlags(event);
+                let _ = context.tx.send(KeyEvent {
+                    keycode,
+                    flags,
+                    text: event_text(event),
+                });
+            }
+            event
+        }
+
+        unsafe fn event_text(event: CgEventRef) -> Option<String> {
+            let mut actual = 0usize;
+            let mut chars = [0u16; MAX_UNICODE_CHARS];
+            CGEventKeyboardGetUnicodeString(
+                event,
+                MAX_UNICODE_CHARS,
+                &mut actual,
+                chars.as_mut_ptr(),
+            );
+            if actual == 0 {
+                return None;
+            }
+
+            String::from_utf16(&chars[..actual])
+                .ok()
+                .filter(|s| !s.is_empty())
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -1203,6 +1677,65 @@ mod macos {
 
             std::env::remove_var("OPENTYPELESS_EDIT_MONITOR_JSONL");
             std::env::remove_var("OPENTYPELESS_EDIT_MONITOR_JSONL_PATH");
+        }
+
+        #[test]
+        fn keyboard_fallback_details_are_low_confidence_evidence() {
+            let details = keyboard_fallback_event_details(
+                keyboard_fallback::KeyEvent {
+                    keycode: 51,
+                    flags: 0x0002_0000 | 0x0010_0000,
+                    text: None,
+                },
+                Some(99),
+                7,
+            );
+
+            assert_eq!(details["generation"], 7);
+            assert_eq!(details["confidence"], "low");
+            assert_eq!(details["scope"], "target_frontmost_keydown");
+            assert_eq!(details["frontmostPid"], 99);
+            assert_eq!(details["keycode"], 51);
+            assert_eq!(details["keyLabel"], "backspace");
+            assert_eq!(details["modifiers"], json!(["shift", "command"]));
+        }
+
+        #[test]
+        fn related_edit_values_keep_monitoring() {
+            let session = EditMonitorSession {
+                target_pid: Some(42),
+                original_text: "可以啊，这里是一个。".into(),
+                inserted_text: "可以啊，这里是一个。".into(),
+            };
+
+            assert!(!should_stop_on_unrelated_value(
+                &session,
+                "可以啊，这里是一个。",
+                "可以啊，这边是一个测试。",
+                "可以啊，这边是一个测试。 // 我改了，你看下信号",
+            ));
+        }
+
+        #[test]
+        fn unrelated_or_empty_values_stop_before_polluting_final_candidate() {
+            let session = EditMonitorSession {
+                target_pid: Some(42),
+                original_text: "可以啊，这里是一个。".into(),
+                inserted_text: "可以啊，这里是一个。".into(),
+            };
+
+            assert!(should_stop_on_unrelated_value(
+                &session,
+                "可以啊，这里是一个。",
+                "可以啊，这边是一个测试。 // 我改了，你看下信号",
+                "\n要求后续变更",
+            ));
+            assert!(should_stop_on_unrelated_value(
+                &session,
+                "可以啊，这里是一个。",
+                "可以啊，这边是一个测试。 // 我改了，你看下信号",
+                "",
+            ));
         }
     }
 }

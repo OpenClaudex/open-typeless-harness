@@ -8,6 +8,7 @@ import type {
   DictionaryEntry,
   HotkeyCapability,
   HotkeyStatus,
+  LearningDashboard,
   PermissionStatus,
   PolishMode,
   QaHotkeyBinding,
@@ -68,6 +69,18 @@ const mockHotkeyCapability: HotkeyCapability = {
 const mockCredentialsStatus: CredentialsStatus = {
   volcengineConfigured: true,
   arkConfigured: true,
+  asrHealth: {
+    state: 'ok',
+    checkedAt: new Date().toISOString(),
+    message: null,
+    consecutiveFailures: 0,
+  },
+  llmHealth: {
+    state: 'unstable',
+    checkedAt: new Date().toISOString(),
+    message: 'providerRequestTimeout',
+    consecutiveFailures: 1,
+  },
 };
 
 export interface ProviderCheckResult {
@@ -176,6 +189,47 @@ export function deleteHistoryEntry(id: string): Promise<void> {
 
 export function clearHistory(): Promise<void> {
   return invokeOrMock('clear_history', undefined, () => undefined);
+}
+
+export function getLearningDashboard(): Promise<LearningDashboard> {
+  return invokeOrMock('get_learning_dashboard', undefined, () => ({
+    todayStartedAt: new Date().toISOString(),
+    monitorStartsToday: 4,
+    editEventsToday: 18,
+    acceptedTrajectoriesToday: 9,
+    learningCandidatesToday: 3,
+    lowConfidenceCandidatesToday: 1,
+    totalSpeechSkills: 12,
+    initialQueryFailuresToday: 1,
+    fallbackEventsToday: 2,
+    unrelatedStopsToday: 1,
+    latestHotwords: ['Claude', 'Opus', 'GPT-5.5'],
+    latestCandidates: [
+      {
+        timestampMs: Date.now(),
+        from: '这里',
+        to: '这边',
+        confidence: 'medium',
+        status: 'needs_review',
+        finalTextPreview: '可以啊，这边是一个测试。',
+      },
+    ],
+    latestSignals: [
+      {
+        timestampMs: Date.now(),
+        event: 'target_field_unrelated',
+        label: 'Unrelated field ignored',
+      },
+    ],
+  }));
+}
+
+export function confirmLearningCandidate(timestampMs: number): Promise<void> {
+  return invokeOrMock('confirm_learning_candidate', { timestampMs }, () => undefined);
+}
+
+export function ignoreLearningCandidate(timestampMs: number): Promise<void> {
+  return invokeOrMock('ignore_learning_candidate', { timestampMs }, () => undefined);
 }
 
 // ── Vocab ──────────────────────────────────────────────────────────────

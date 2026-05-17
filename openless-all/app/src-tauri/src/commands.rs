@@ -1,5 +1,7 @@
 //! Tauri command surface — every IPC entry the React UI invokes lives here.
 
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -98,16 +100,37 @@ pub fn get_windows_ime_status() -> WindowsImeStatus {
 #[tauri::command]
 pub fn get_credentials() -> CredentialsStatus {
     let snap = CredentialsVault::snapshot();
+    let active_asr = CredentialsVault::get_active_asr();
+    let volcengine_configured =
+        configured(&snap.volcengine_app_key) && configured(&snap.volcengine_access_key);
+    let whisper_configured = configured(&credential_value(CredentialAccount::AsrApiKey))
+        && configured(&credential_value(CredentialAccount::AsrEndpoint))
+        && configured(&credential_value(CredentialAccount::AsrModel));
+    let asr_configured = if is_whisper_compatible_provider_id(&active_asr) {
+        whisper_configured
+    } else {
+        volcengine_configured
+    };
+    let ark_configured = (configured(&snap.ark_api_key) || configured(&snap.ark_endpoint))
+        && configured(&snap.ark_model_id);
     CredentialsStatus {
-        volcengine_configured: configured(&snap.volcengine_app_key)
-            && configured(&snap.volcengine_access_key)
-            && configured(&snap.volcengine_resource_id),
-        ark_configured: configured(&snap.ark_api_key),
+        volcengine_configured: asr_configured,
+        ark_configured,
+        asr_health: crate::provider_health::snapshot("asr", asr_configured),
+        llm_health: crate::provider_health::snapshot("llm", ark_configured),
     }
 }
 
 fn configured(field: &Option<String>) -> bool {
     field.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+}
+
+fn credential_value(account: CredentialAccount) -> Option<String> {
+    CredentialsVault::get(account).ok().flatten()
+}
+
+fn is_whisper_compatible_provider_id(id: &str) -> bool {
+    matches!(id, "whisper" | "siliconflow" | "zhipu" | "groq")
 }
 
 #[tauri::command]
@@ -151,7 +174,7 @@ pub struct ProviderModelsResult {
 
 #[tauri::command]
 pub async fn validate_provider_credentials(kind: String) -> Result<ProviderCheckResult, String> {
-    match kind.as_str() {
+    let result = match kind.as_str() {
         "llm" => validate_llm_provider()
             .await
             .map(|()| ProviderCheckResult { ok: true }),
@@ -159,7 +182,12 @@ pub async fn validate_provider_credentials(kind: String) -> Result<ProviderCheck
             .await
             .map(|()| ProviderCheckResult { ok: true }),
         _ => Err(format!("unknown provider kind: {kind}")),
+    };
+    match &result {
+        Ok(_) => crate::provider_health::record_success(&kind),
+        Err(err) => crate::provider_health::record_failure(&kind, err),
     }
+    result
 }
 
 #[tauri::command]
@@ -437,6 +465,330 @@ pub fn clear_history(coord: CoordinatorState<'_>) -> Result<(), String> {
     coord.history().clear().map_err(|e| e.to_string())
 }
 
+// ─────────────────────────── learning dashboard ───────────────────────────
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LearningDashboard {
+    today_started_at: String,
+    monitor_starts_today: u32,
+    edit_events_today: u32,
+    accepted_trajectories_today: u32,
+    learning_candidates_today: u32,
+    low_confidence_candidates_today: u32,
+    total_speech_skills: u32,
+    initial_query_failures_today: u32,
+    fallback_events_today: u32,
+    unrelated_stops_today: u32,
+    latest_hotwords: Vec<String>,
+    latest_candidates: Vec<LearningDashboardCandidate>,
+    latest_signals: Vec<LearningHealthSignal>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LearningDashboardCandidate {
+    timestamp_ms: u128,
+    from: String,
+    to: String,
+    confidence: String,
+    status: String,
+    final_text_preview: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LearningHealthSignal {
+    timestamp_ms: u128,
+    event: String,
+    label: String,
+}
+
+#[tauri::command]
+pub fn get_learning_dashboard() -> LearningDashboard {
+    let (today_started_at, today_start_ms) = today_start();
+    let monitor_values = read_jsonl_values(app_jsonl_path(
+        "OPENTYPELESS_EDIT_MONITOR_JSONL_PATH",
+        "opentypeless-edit-monitor.jsonl",
+    ));
+    let candidate_values = read_jsonl_values(app_jsonl_path(
+        "OPENTYPELESS_LEARNING_CANDIDATES_PATH",
+        "opentypeless-learning-candidates.jsonl",
+    ));
+    let decisions = learning_candidate_decisions(&candidate_values);
+
+    let mut dashboard = LearningDashboard {
+        today_started_at,
+        total_speech_skills: read_total_speech_skills(),
+        ..Default::default()
+    };
+
+    for value in &monitor_values {
+        if !is_today(value, today_start_ms) {
+            continue;
+        }
+        match value
+            .get("event")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            "monitor_start" => dashboard.monitor_starts_today += 1,
+            "text_changed" => dashboard.edit_events_today += 1,
+            "initial_query_failed" => dashboard.initial_query_failures_today += 1,
+            "keyboard_fallback_event" => dashboard.fallback_events_today += 1,
+            "target_field_unrelated" => dashboard.unrelated_stops_today += 1,
+            _ => {}
+        }
+    }
+
+    for value in &candidate_values {
+        if !is_today(value, today_start_ms) {
+            continue;
+        }
+        match value.get("event").and_then(Value::as_str) {
+            Some("correction_candidate") => {
+                dashboard.learning_candidates_today += 1;
+                let Some(timestamp_ms) = value.get("timestampMs").and_then(value_to_u128) else {
+                    continue;
+                };
+                if candidate_status(value, decisions.get(&timestamp_ms).map(String::as_str))
+                    == "needs_review"
+                {
+                    dashboard.low_confidence_candidates_today += 1;
+                }
+            }
+            Some("accepted_trajectory") => dashboard.accepted_trajectories_today += 1,
+            _ => {}
+        }
+    }
+
+    dashboard.latest_hotwords = latest_hotwords(&candidate_values, today_start_ms);
+
+    dashboard.latest_candidates = candidate_values
+        .iter()
+        .rev()
+        .filter(|value| is_today(value, today_start_ms))
+        .filter(|value| value.get("event").and_then(Value::as_str) == Some("correction_candidate"))
+        .filter_map(|value| {
+            let timestamp_ms = value.get("timestampMs").and_then(value_to_u128)?;
+            let status = candidate_status(value, decisions.get(&timestamp_ms).map(String::as_str));
+            (status != "ignored").then(|| learning_candidate_from_value(value, status))?
+        })
+        .take(3)
+        .collect();
+
+    dashboard.latest_signals = monitor_values
+        .iter()
+        .rev()
+        .filter(|value| is_today(value, today_start_ms))
+        .filter_map(learning_signal_from_value)
+        .take(3)
+        .collect();
+
+    dashboard
+}
+
+#[tauri::command]
+pub fn confirm_learning_candidate(timestamp_ms: u64) -> Result<(), String> {
+    crate::learning_probe::confirm_learning_candidate(timestamp_ms).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn ignore_learning_candidate(timestamp_ms: u64) -> Result<(), String> {
+    crate::learning_probe::ignore_learning_candidate(timestamp_ms).map_err(|e| e.to_string())
+}
+
+fn today_start() -> (String, u128) {
+    let now = chrono::Local::now();
+    let Some(start_naive) = now.date_naive().and_hms_opt(0, 0, 0) else {
+        return (String::new(), 0);
+    };
+    let Some(start) = start_naive.and_local_timezone(chrono::Local).single() else {
+        return (String::new(), 0);
+    };
+    let millis = start.timestamp_millis().max(0) as u128;
+    (start.to_rfc3339(), millis)
+}
+
+fn is_today(value: &Value, today_start_ms: u128) -> bool {
+    value
+        .get("timestampMs")
+        .and_then(value_to_u128)
+        .is_some_and(|timestamp_ms| timestamp_ms >= today_start_ms)
+}
+
+fn value_to_u128(value: &Value) -> Option<u128> {
+    value
+        .as_u64()
+        .map(u128::from)
+        .or_else(|| value.as_i64().and_then(|n| u128::try_from(n).ok()))
+}
+
+fn read_jsonl_values(path: Option<PathBuf>) -> Vec<Value> {
+    let Some(path) = path else {
+        return Vec::new();
+    };
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    contents
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .collect()
+}
+
+fn app_jsonl_path(env_key: &str, file_name: &str) -> Option<PathBuf> {
+    std::env::var_os(env_key).map(PathBuf::from).or_else(|| {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join(".openless").join(file_name))
+    })
+}
+
+fn read_total_speech_skills() -> u32 {
+    let Some(path) = app_jsonl_path(
+        "OPENTYPELESS_SPEECH_SKILLS_PATH",
+        "opentypeless-speech-skills.json",
+    ) else {
+        return 0;
+    };
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return 0;
+    };
+    serde_json::from_str::<Value>(&contents)
+        .ok()
+        .and_then(|value| value.as_array().map(|skills| skills.len() as u32))
+        .unwrap_or(0)
+}
+
+fn learning_candidate_decisions(values: &[Value]) -> HashMap<u128, String> {
+    let mut decisions = HashMap::new();
+    for value in values {
+        if value.get("event").and_then(Value::as_str) != Some("learning_candidate_decision") {
+            continue;
+        }
+        let Some(timestamp_ms) = value.get("candidateTimestampMs").and_then(value_to_u128) else {
+            continue;
+        };
+        let Some(decision) = value.get("decision").and_then(Value::as_str) else {
+            continue;
+        };
+        if matches!(decision, "confirmed" | "ignored") {
+            decisions.insert(timestamp_ms, decision.to_string());
+        }
+    }
+    decisions
+}
+
+fn candidate_status(value: &Value, decision: Option<&str>) -> String {
+    if let Some(decision @ ("confirmed" | "ignored")) = decision {
+        return decision.to_string();
+    }
+    value
+        .get("status")
+        .and_then(Value::as_str)
+        .filter(|status| matches!(*status, "auto_learned" | "needs_review"))
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            if value
+                .pointer("/correction/confidence")
+                .and_then(Value::as_str)
+                == Some("low")
+            {
+                "needs_review".to_string()
+            } else {
+                "auto_learned".to_string()
+            }
+        })
+}
+
+fn learning_candidate_from_value(
+    value: &Value,
+    status: String,
+) -> Option<LearningDashboardCandidate> {
+    Some(LearningDashboardCandidate {
+        timestamp_ms: value.get("timestampMs").and_then(value_to_u128)?,
+        from: value
+            .pointer("/correction/from")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        to: value
+            .pointer("/correction/to")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        confidence: value
+            .pointer("/correction/confidence")
+            .and_then(Value::as_str)
+            .unwrap_or("low")
+            .to_string(),
+        status,
+        final_text_preview: truncate_chars(
+            value
+                .get("finalText")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            80,
+        ),
+    })
+}
+
+fn learning_signal_from_value(value: &Value) -> Option<LearningHealthSignal> {
+    let event = value.get("event").and_then(Value::as_str)?;
+    let label = match event {
+        "initial_query_failed" => "AX focus unavailable",
+        "keyboard_fallback_start" => "Keyboard fallback active",
+        "keyboard_fallback_timeout" => "Keyboard fallback ended",
+        "target_field_unrelated" => "Unrelated field ignored",
+        "keyboard_fallback_unavailable" => "Keyboard fallback unavailable",
+        _ => return None,
+    };
+    Some(LearningHealthSignal {
+        timestamp_ms: value.get("timestampMs").and_then(value_to_u128)?,
+        event: event.to_string(),
+        label: label.to_string(),
+    })
+}
+
+fn latest_hotwords(values: &[Value], today_start_ms: u128) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut hotwords = Vec::new();
+    for value in values.iter().rev() {
+        if !is_today(value, today_start_ms)
+            || value.get("event").and_then(Value::as_str) != Some("accepted_trajectory")
+        {
+            continue;
+        }
+        let Some(items) = value.get("hotwords").and_then(Value::as_array) else {
+            continue;
+        };
+        for item in items {
+            let Some(term) = item.as_str().map(str::trim).filter(|term| !term.is_empty()) else {
+                continue;
+            };
+            let key = term.to_lowercase();
+            if seen.insert(key) {
+                hotwords.push(term.to_string());
+            }
+            if hotwords.len() >= 6 {
+                return hotwords;
+            }
+        }
+    }
+    hotwords
+}
+
+fn truncate_chars(value: &str, limit: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(limit).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
+}
+
 // ─────────────────────────── vocab ───────────────────────────
 
 #[tauri::command]
@@ -495,6 +847,11 @@ pub async fn stop_dictation(coord: CoordinatorState<'_>) -> Result<(), String> {
 #[tauri::command]
 pub fn cancel_dictation(coord: CoordinatorState<'_>) {
     coord.cancel_dictation();
+}
+
+#[tauri::command]
+pub fn dismiss_capsule(coord: CoordinatorState<'_>) {
+    coord.dismiss_capsule();
 }
 
 #[tauri::command]

@@ -170,7 +170,7 @@ function CircleButton({ variant, enabled, onClick }: CircleButtonProps) {
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        cursor: enabled ? 'default' : 'not-allowed',
+        cursor: enabled ? 'pointer' : 'not-allowed',
         opacity: enabled ? 1 : 0.42,
         flexShrink: 0,
         padding: 0,
@@ -205,7 +205,9 @@ function Pill({ os, state, level, insertedChars, message, onCancel, onConfirm }:
   const { t } = useTranslation();
   const metrics = getCapsulePillMetrics(os);
   const processingLayout = getCapsuleMessageLayout(os, 'processing');
-  const enabled = state === 'recording';
+  const isTerminal = state === 'done' || state === 'cancelled' || state === 'error';
+  const canCancel = state !== 'idle';
+  const canConfirm = state === 'recording' || isTerminal;
 
   let center: JSX.Element;
   switch (state) {
@@ -316,11 +318,11 @@ function Pill({ os, state, level, insertedChars, message, onCancel, onConfirm }:
         filter: dropShadow,
       }}
     >
-      <CircleButton variant="cancel" enabled={enabled} onClick={onCancel} />
+      <CircleButton variant="cancel" enabled={canCancel} onClick={onCancel} />
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {center}
       </div>
-      <CircleButton variant="confirm" enabled={enabled} onClick={onConfirm} />
+      <CircleButton variant="confirm" enabled={canConfirm} onClick={onConfirm} />
       <ProgressRail state={state} level={level} />
     </div>
   );
@@ -363,11 +365,15 @@ export function Capsule() {
 
 
   const onCancel = () => {
-    void invokeOrMock<void>('cancel_dictation', undefined, () => undefined);
+    const command = state === 'recording' || state === 'transcribing' || state === 'polishing'
+      ? 'cancel_dictation'
+      : 'dismiss_capsule';
+    void invokeOrMock<void>(command, undefined, () => undefined);
   };
 
   const onConfirm = () => {
-    void invokeOrMock<void>('stop_dictation', undefined, () => undefined);
+    const command = state === 'recording' ? 'stop_dictation' : 'dismiss_capsule';
+    void invokeOrMock<void>(command, undefined, () => undefined);
   };
 
   if (state === 'idle') {

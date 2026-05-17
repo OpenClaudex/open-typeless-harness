@@ -197,6 +197,17 @@ export interface CapsulePayload {
 export interface CredentialsStatus {
   volcengineConfigured: boolean;
   arkConfigured: boolean;
+  asrHealth: ProviderHealth;
+  llmHealth: ProviderHealth;
+}
+
+export type ProviderHealthState = 'notConfigured' | 'unknown' | 'ok' | 'unstable' | 'down';
+
+export interface ProviderHealth {
+  state: ProviderHealthState;
+  checkedAt: string | null;
+  message: string | null;
+  consecutiveFailures: number;
 }
 
 export interface TodayMetrics {
@@ -204,6 +215,37 @@ export interface TodayMetrics {
   segmentsToday: number;
   avgLatencyMs: number;
   totalDurationMs: number;
+}
+
+export interface LearningDashboardCandidate {
+  timestampMs: number;
+  from: string;
+  to: string;
+  confidence: string;
+  status: 'auto_learned' | 'needs_review' | 'confirmed' | 'ignored' | string;
+  finalTextPreview: string;
+}
+
+export interface LearningHealthSignal {
+  timestampMs: number;
+  event: string;
+  label: string;
+}
+
+export interface LearningDashboard {
+  todayStartedAt: string;
+  monitorStartsToday: number;
+  editEventsToday: number;
+  acceptedTrajectoriesToday: number;
+  learningCandidatesToday: number;
+  lowConfidenceCandidatesToday: number;
+  totalSpeechSkills: number;
+  initialQueryFailuresToday: number;
+  fallbackEventsToday: number;
+  unrelatedStopsToday: number;
+  latestHotwords: string[];
+  latestCandidates: LearningDashboardCandidate[];
+  latestSignals: LearningHealthSignal[];
 }
 
 export type PermissionStatus =

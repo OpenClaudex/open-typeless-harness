@@ -335,14 +335,20 @@ mod platform {
                 }
                 return event;
             }
-            FLAGS_CHANGED => handle_flags_changed(ctx, event),
+            FLAGS_CHANGED => {
+                if handle_flags_changed(ctx, event) {
+                    // The configured modifier is reserved for dictation. Swallow it so
+                    // focused apps do not also treat it as their own bare-modifier hotkey.
+                    return std::ptr::null_mut();
+                }
+            }
             KEY_DOWN => handle_key_down(ctx, event),
             _ => {}
         }
         event
     }
 
-    fn handle_flags_changed(ctx: &CallbackContext, event: CgEventRef) {
+    fn handle_flags_changed(ctx: &CallbackContext, event: CgEventRef) -> bool {
         let flags = unsafe { CGEventGetFlags(event) };
 
         // Shift 是翻译模式修饰键 — 与触发键的 keycode 检查独立，任何时刻按 Shift 都生效。
@@ -361,9 +367,8 @@ mod platform {
 
         let keycode = unsafe { CGEventGetIntegerValueField(event, KEYBOARD_EVENT_KEYCODE) };
         let trigger = ctx.shared.binding.read().trigger;
-        let expected_keycode = trigger_to_keycode(trigger);
-        if keycode != expected_keycode {
-            return;
+        if !is_trigger_flags_event(trigger, keycode) {
+            return false;
         }
         let mask = trigger_to_flag_mask(trigger);
         let is_active = (flags & mask) != 0;
@@ -376,6 +381,7 @@ mod platform {
             ctx.shared.trigger_held.store(false, Ordering::SeqCst);
             send_or_log(&ctx.tx, HotkeyEvent::Released);
         }
+        true
     }
 
     fn handle_key_down(ctx: &CallbackContext, event: CgEventRef) {
@@ -396,6 +402,10 @@ mod platform {
         }
     }
 
+    fn is_trigger_flags_event(trigger: HotkeyTrigger, keycode: i64) -> bool {
+        keycode == trigger_to_keycode(trigger)
+    }
+
     fn trigger_to_flag_mask(trigger: HotkeyTrigger) -> CgEventFlags {
         match trigger {
             HotkeyTrigger::LeftControl | HotkeyTrigger::RightControl => FLAG_MASK_CONTROL,
@@ -404,6 +414,23 @@ mod platform {
                 FLAG_MASK_ALTERNATE
             }
             HotkeyTrigger::Fn => FLAG_MASK_SECONDARY_FN,
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn only_configured_trigger_flags_events_are_swallowed() {
+            assert!(is_trigger_flags_event(HotkeyTrigger::LeftControl, 59));
+            assert!(is_trigger_flags_event(HotkeyTrigger::RightControl, 62));
+            assert!(is_trigger_flags_event(HotkeyTrigger::RightOption, 61));
+            assert!(is_trigger_flags_event(HotkeyTrigger::RightAlt, 61));
+
+            assert!(!is_trigger_flags_event(HotkeyTrigger::LeftControl, 62));
+            assert!(!is_trigger_flags_event(HotkeyTrigger::RightOption, 59));
+            assert!(!is_trigger_flags_event(HotkeyTrigger::RightCommand, 59));
         }
     }
 }
