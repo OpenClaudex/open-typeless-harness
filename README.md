@@ -48,7 +48,13 @@
 </p>
 
 <p align="center">
-  <a href="docs/assets/open-typeless-harness-demo.mp4"><strong>Watch the live app walkthrough</strong></a>
+  <a href="docs/assets/open-typeless-harness-demo.mp4">
+    <img src="docs/assets/open-typeless-harness-demo.gif" alt="Open Typeless Harness live app walkthrough" width="780">
+  </a>
+</p>
+
+<p align="center">
+  <sub>Live app walkthrough. Click the preview to open the MP4.</sub>
 </p>
 
 ## Features

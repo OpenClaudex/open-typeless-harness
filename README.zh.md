@@ -48,7 +48,13 @@
 </p>
 
 <p align="center">
-  <a href="docs/assets/open-typeless-harness-demo.mp4"><strong>查看真实 App 操作视频</strong></a>
+  <a href="docs/assets/open-typeless-harness-demo.mp4">
+    <img src="docs/assets/open-typeless-harness-demo.gif" alt="Open Typeless Harness 真实 App 操作视频" width="780">
+  </a>
+</p>
+
+<p align="center">
+  <sub>真实 App 操作预览。点击动图打开 MP4。</sub>
 </p>
 
 ## 功能
