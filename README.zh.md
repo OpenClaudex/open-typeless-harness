@@ -44,10 +44,6 @@
 > **我是 agent** -> 产品闭环是 `ASR transcript -> LLM polish -> focused-field insertion -> post-insertion edit monitor -> local speech skills`。
 
 <p align="center">
-  <img src="docs/assets/open-typeless-harness-app.png" alt="Open Typeless Harness app screenshot" width="780">
-</p>
-
-<p align="center">
   <a href="docs/assets/open-typeless-harness-demo.mp4">
     <img src="docs/assets/open-typeless-harness-demo.gif" alt="Open Typeless Harness 真实 App 操作视频" width="780">
   </a>

@@ -44,10 +44,6 @@
 > **I'm an agent** -> The product loop is `ASR transcript -> LLM polish -> focused-field insertion -> post-insertion edit monitor -> local speech skills`.
 
 <p align="center">
-  <img src="docs/assets/open-typeless-harness-app.png" alt="Open Typeless Harness app screenshot" width="780">
-</p>
-
-<p align="center">
   <a href="docs/assets/open-typeless-harness-demo.mp4">
     <img src="docs/assets/open-typeless-harness-demo.gif" alt="Open Typeless Harness live app walkthrough" width="780">
   </a>
