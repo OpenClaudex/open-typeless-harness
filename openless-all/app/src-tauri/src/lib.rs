@@ -206,6 +206,7 @@ pub fn run() {
             commands::clear_history,
             commands::get_learning_dashboard,
             commands::confirm_learning_candidate,
+            commands::confirm_edited_learning_candidate,
             commands::ignore_learning_candidate,
             commands::list_vocab,
             commands::add_vocab,

@@ -1638,6 +1638,8 @@ async fn end_session(inner: &Arc<Inner>) -> Result<(), String> {
 
     let done_message = if tsf_required_insert_failed {
         Some("TSF 未上屏，已禁止非 TSF 兜底".to_string())
+    } else if polish_error.as_deref() == Some("polishTimeoutFastPath") {
+        Some("润色较慢，已插入原文".to_string())
     } else if polish_error.is_some() {
         // polish 失败优先告知用户，即使 insert 成功也要让用户知道这版是原文
         Some("润色失败，已插入原文".to_string())
@@ -3039,7 +3041,7 @@ fn enabled_phrases(inner: &Arc<Inner>) -> Vec<String> {
 /// 终止态（Done / Cancelled / Error）后延迟 N ms 把胶囊改回 Idle，让浮窗自动消失。
 /// 用户点 ✕ / ✓ / 中途出错 / 按 Esc 都走这里，统一 2 秒。
 const CAPSULE_AUTO_HIDE_DELAY_MS: u64 = 2000;
-const POLISH_FAST_PATH_TIMEOUT_MS: u64 = 1800;
+const POLISH_FAST_PATH_TIMEOUT_MS: u64 = 6000;
 
 /// begin_session 中各 await 之间的 cancel race 检查结果。
 enum BeginOutcome {

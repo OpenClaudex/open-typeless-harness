@@ -72,9 +72,9 @@ export function WindowChrome({
             ? '1px solid rgba(255,255,255,0.18)'
             : '0.5px solid rgba(0,0,0,.10)',
         background: `
-          radial-gradient(120% 80% at 0% 0%, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 60%),
-          radial-gradient(100% 70% at 100% 100%, rgba(15,118,110,0.10) 0%, rgba(15,118,110,0) 55%),
-          linear-gradient(180deg, rgba(245,245,247,0.92) 0%, rgba(232,232,236,0.92) 100%)
+          radial-gradient(120% 90% at 8% 0%, rgba(244,180,64,0.18) 0%, rgba(244,180,64,0) 58%),
+          radial-gradient(100% 70% at 100% 100%, rgba(15,118,110,0.16) 0%, rgba(15,118,110,0) 55%),
+          linear-gradient(180deg, rgba(244,238,226,0.96) 0%, rgba(232,222,204,0.96) 100%)
         `,
         backdropFilter: 'blur(var(--ol-glass-blur-strong)) saturate(190%)',
         WebkitBackdropFilter: 'blur(var(--ol-glass-blur-strong)) saturate(190%)',

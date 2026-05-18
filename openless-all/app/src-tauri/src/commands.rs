@@ -101,21 +101,32 @@ pub fn get_windows_ime_status() -> WindowsImeStatus {
 pub fn get_credentials() -> CredentialsStatus {
     let snap = CredentialsVault::snapshot();
     let active_asr = CredentialsVault::get_active_asr();
+    let active_llm = CredentialsVault::get_active_llm();
+    let active_asr_model = credential_value(CredentialAccount::AsrModel);
+    let active_asr_endpoint = credential_value(CredentialAccount::AsrEndpoint);
+    let active_llm_model = credential_value(CredentialAccount::ArkModelId);
+    let active_llm_endpoint = credential_value(CredentialAccount::ArkEndpoint);
     let volcengine_configured =
         configured(&snap.volcengine_app_key) && configured(&snap.volcengine_access_key);
     let whisper_configured = configured(&credential_value(CredentialAccount::AsrApiKey))
-        && configured(&credential_value(CredentialAccount::AsrEndpoint))
-        && configured(&credential_value(CredentialAccount::AsrModel));
+        && configured(&active_asr_endpoint)
+        && configured(&active_asr_model);
     let asr_configured = if is_whisper_compatible_provider_id(&active_asr) {
         whisper_configured
     } else {
         volcengine_configured
     };
-    let ark_configured = (configured(&snap.ark_api_key) || configured(&snap.ark_endpoint))
-        && configured(&snap.ark_model_id);
+    let ark_configured = (configured(&snap.ark_api_key) || configured(&active_llm_endpoint))
+        && configured(&active_llm_model);
     CredentialsStatus {
         volcengine_configured: asr_configured,
         ark_configured,
+        active_asr_provider: active_asr,
+        active_asr_model,
+        active_asr_endpoint,
+        active_llm_provider: active_llm,
+        active_llm_model,
+        active_llm_endpoint,
         asr_health: crate::provider_health::snapshot("asr", asr_configured),
         llm_health: crate::provider_health::snapshot("llm", ark_configured),
     }
@@ -504,6 +515,12 @@ pub struct LearningHealthSignal {
     label: String,
 }
 
+struct LearningCandidateDecision {
+    decision: String,
+    edited_from: Option<String>,
+    edited_to: Option<String>,
+}
+
 #[tauri::command]
 pub fn get_learning_dashboard() -> LearningDashboard {
     let (today_started_at, today_start_ms) = today_start();
@@ -551,8 +568,12 @@ pub fn get_learning_dashboard() -> LearningDashboard {
                 let Some(timestamp_ms) = value.get("timestampMs").and_then(value_to_u128) else {
                     continue;
                 };
-                if candidate_status(value, decisions.get(&timestamp_ms).map(String::as_str))
-                    == "needs_review"
+                if candidate_status(
+                    value,
+                    decisions
+                        .get(&timestamp_ms)
+                        .map(|decision| decision.decision.as_str()),
+                ) == "needs_review"
                 {
                     dashboard.low_confidence_candidates_today += 1;
                 }
@@ -571,8 +592,10 @@ pub fn get_learning_dashboard() -> LearningDashboard {
         .filter(|value| value.get("event").and_then(Value::as_str) == Some("correction_candidate"))
         .filter_map(|value| {
             let timestamp_ms = value.get("timestampMs").and_then(value_to_u128)?;
-            let status = candidate_status(value, decisions.get(&timestamp_ms).map(String::as_str));
-            (status != "ignored").then(|| learning_candidate_from_value(value, status))?
+            let decision = decisions.get(&timestamp_ms);
+            let status =
+                candidate_status(value, decision.map(|decision| decision.decision.as_str()));
+            (status != "ignored").then(|| learning_candidate_from_value(value, status, decision))?
         })
         .take(3)
         .collect();
@@ -596,6 +619,16 @@ pub fn confirm_learning_candidate(timestamp_ms: u64) -> Result<(), String> {
 #[tauri::command]
 pub fn ignore_learning_candidate(timestamp_ms: u64) -> Result<(), String> {
     crate::learning_probe::ignore_learning_candidate(timestamp_ms).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn confirm_edited_learning_candidate(
+    timestamp_ms: u64,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    crate::learning_probe::confirm_learning_candidate_with_edit(timestamp_ms, from, to)
+        .map_err(|e| e.to_string())
 }
 
 fn today_start() -> (String, u128) {
@@ -661,7 +694,7 @@ fn read_total_speech_skills() -> u32 {
         .unwrap_or(0)
 }
 
-fn learning_candidate_decisions(values: &[Value]) -> HashMap<u128, String> {
+fn learning_candidate_decisions(values: &[Value]) -> HashMap<u128, LearningCandidateDecision> {
     let mut decisions = HashMap::new();
     for value in values {
         if value.get("event").and_then(Value::as_str) != Some("learning_candidate_decision") {
@@ -674,7 +707,20 @@ fn learning_candidate_decisions(values: &[Value]) -> HashMap<u128, String> {
             continue;
         };
         if matches!(decision, "confirmed" | "ignored") {
-            decisions.insert(timestamp_ms, decision.to_string());
+            decisions.insert(
+                timestamp_ms,
+                LearningCandidateDecision {
+                    decision: decision.to_string(),
+                    edited_from: value
+                        .pointer("/editedCorrection/from")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    edited_to: value
+                        .pointer("/editedCorrection/to")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                },
+            );
         }
     }
     decisions
@@ -705,19 +751,26 @@ fn candidate_status(value: &Value, decision: Option<&str>) -> String {
 fn learning_candidate_from_value(
     value: &Value,
     status: String,
+    decision: Option<&LearningCandidateDecision>,
 ) -> Option<LearningDashboardCandidate> {
+    let edited_from = decision.and_then(|decision| decision.edited_from.as_deref());
+    let edited_to = decision.and_then(|decision| decision.edited_to.as_deref());
     Some(LearningDashboardCandidate {
         timestamp_ms: value.get("timestampMs").and_then(value_to_u128)?,
-        from: value
-            .pointer("/correction/from")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        to: value
-            .pointer("/correction/to")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
+        from: edited_from.map(str::to_string).unwrap_or_else(|| {
+            value
+                .pointer("/correction/from")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        }),
+        to: edited_to.map(str::to_string).unwrap_or_else(|| {
+            value
+                .pointer("/correction/to")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        }),
         confidence: value
             .pointer("/correction/confidence")
             .and_then(Value::as_str)

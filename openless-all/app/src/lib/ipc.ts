@@ -69,6 +69,12 @@ const mockHotkeyCapability: HotkeyCapability = {
 const mockCredentialsStatus: CredentialsStatus = {
   volcengineConfigured: true,
   arkConfigured: true,
+  activeAsrProvider: 'siliconflow',
+  activeAsrModel: 'FunAudioLLM/SenseVoiceSmall',
+  activeAsrEndpoint: 'https://api.siliconflow.cn/v1',
+  activeLlmProvider: 'custom',
+  activeLlmModel: 'deepseek/deepseek-v3.2',
+  activeLlmEndpoint: 'https://openrouter.ai/api/v1',
   asrHealth: {
     state: 'ok',
     checkedAt: new Date().toISOString(),
@@ -226,6 +232,10 @@ export function getLearningDashboard(): Promise<LearningDashboard> {
 
 export function confirmLearningCandidate(timestampMs: number): Promise<void> {
   return invokeOrMock('confirm_learning_candidate', { timestampMs }, () => undefined);
+}
+
+export function confirmEditedLearningCandidate(timestampMs: number, from: string, to: string): Promise<void> {
+  return invokeOrMock('confirm_edited_learning_candidate', { timestampMs, from, to }, () => undefined);
 }
 
 export function ignoreLearningCandidate(timestampMs: number): Promise<void> {

@@ -178,27 +178,43 @@ function FloatingShellBody({ os, initialTab, initialSettings }: { os: OS; initia
         {/* Sidebar — 透明地坐在外层磨砂底板上，让 LOGO/导航/快捷键/BETA/footer 共用同一片磨砂玻璃 */}
         <aside
           style={{
-            width: 188,
+            width: 204,
             flexShrink: 0,
             display: 'flex', flexDirection: 'column',
-            background: 'transparent',
-            padding: '10px 10px 12px',
+            background: 'linear-gradient(180deg, rgba(23,20,15,0.06), rgba(23,20,15,0.02))',
+            borderRight: '0.5px solid rgba(36,31,22,0.08)',
+            padding: '12px 12px 12px',
           }}>
 
           {/* brand */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '2px 8px 12px' }}>
-            <img
-              src="AppIcon.png"
-              alt={t('app.name')}
-              style={{ width: 22, height: 22, borderRadius: 5, boxShadow: '0 1px 2px rgba(0,0,0,.1), 0 0 0 0.5px rgba(0,0,0,.06)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 8px 16px' }}>
+            <div
+              aria-label={t('app.name')}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 10,
+                display: 'grid',
+                placeItems: 'center',
+                background: 'linear-gradient(135deg, #17140f, #0f766e)',
+                color: '#fffaf0',
+                fontFamily: 'var(--ol-font-display)',
+                fontSize: 11,
+                fontWeight: 750,
+                letterSpacing: '-0.04em',
+                boxShadow: '0 12px 22px -16px rgba(23,20,15,0.8)',
+              }}
+            >
+              OT
+            </div>
 
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 650, letterSpacing: '-0.02em', color: 'var(--ol-ink)', lineHeight: 1.1 }}>Open Typeless</div>
-              <div style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--ol-blue)', letterSpacing: '0.08em', textTransform: 'uppercase', marginTop: 2 }}>Harness</div>
+              <div style={{ fontFamily: 'var(--ol-font-display)', fontSize: 14, fontWeight: 700, letterSpacing: '-0.04em', color: 'var(--ol-ink)', lineHeight: 1.05 }}>Open Typeless</div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--ol-blue)', letterSpacing: '0.10em', textTransform: 'uppercase', marginTop: 3 }}>Learning input</div>
             </div>
             <span style={{
               marginLeft: 'auto', padding: '1px 6px', fontSize: 9.5, fontWeight: 600,
-              borderRadius: 4, background: 'rgba(0,0,0,0.06)', color: 'var(--ol-ink-3)',
+              borderRadius: 999, background: 'rgba(244,180,64,0.18)', color: 'var(--ol-ink-2)',
               letterSpacing: '0.04em',
             }}>{APP_VERSION_LABEL}</span>
           </div>
@@ -215,10 +231,10 @@ function FloatingShellBody({ os, initialTab, initialSettings }: { os: OS; initia
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '7px 10px',
                     borderRadius: 8, border: 0,
-                    background: active ? 'var(--ol-surface)' : 'transparent',
-                    color: active ? 'var(--ol-ink)' : 'var(--ol-ink-3)',
-                    fontFamily: 'inherit', fontSize: 13, fontWeight: active ? 600 : 500,
-                    boxShadow: active ? '0 1px 2px rgba(0,0,0,.05), 0 0 0 0.5px rgba(0,0,0,.06)' : 'none',
+                    background: active ? '#17140f' : 'transparent',
+                    color: active ? '#fffaf0' : 'var(--ol-ink-3)',
+                    fontFamily: 'inherit', fontSize: 13, fontWeight: active ? 650 : 500,
+                    boxShadow: active ? '0 14px 28px -22px rgba(23,20,15,0.72)' : 'none',
                     cursor: 'default',
                     transition: 'background 0.16s var(--ol-motion-quick), color 0.16s var(--ol-motion-quick), box-shadow 0.18s var(--ol-motion-soft)',
                     textAlign: 'left',
@@ -250,7 +266,7 @@ function FloatingShellBody({ os, initialTab, initialSettings }: { os: OS; initia
               background: 'var(--ol-surface)',
               borderRadius: 'var(--ol-window-console-radius)',
               border: '0.5px solid rgba(0,0,0,0.06)',
-              boxShadow: '0 1px 0 rgba(255,255,255,0.8) inset, 0 8px 24px -12px rgba(15,17,22,0.10), 0 2px 6px -2px rgba(15,17,22,0.06)',
+              boxShadow: '0 1px 0 rgba(255,255,255,0.72) inset, 0 18px 42px -30px rgba(23,20,15,0.24), 0 2px 6px -2px rgba(23,20,15,0.10)',
               display: 'flex',
               flexDirection: 'column',
             }}

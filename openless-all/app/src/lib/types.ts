@@ -197,6 +197,12 @@ export interface CapsulePayload {
 export interface CredentialsStatus {
   volcengineConfigured: boolean;
   arkConfigured: boolean;
+  activeAsrProvider: string;
+  activeAsrModel: string | null;
+  activeAsrEndpoint: string | null;
+  activeLlmProvider: string;
+  activeLlmModel: string | null;
+  activeLlmEndpoint: string | null;
   asrHealth: ProviderHealth;
   llmHealth: ProviderHealth;
 }

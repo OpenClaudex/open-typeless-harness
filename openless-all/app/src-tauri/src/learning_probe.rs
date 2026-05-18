@@ -684,6 +684,26 @@ fn should_auto_apply(confidence: &str) -> bool {
 }
 
 pub fn confirm_learning_candidate(candidate_timestamp_ms: u64) -> anyhow::Result<()> {
+    confirm_learning_candidate_inner(candidate_timestamp_ms, None)
+}
+
+pub fn confirm_learning_candidate_with_edit(
+    candidate_timestamp_ms: u64,
+    edited_from: String,
+    edited_to: String,
+) -> anyhow::Result<()> {
+    let edited_from = edited_from.trim().to_string();
+    let edited_to = edited_to.trim().to_string();
+    if edited_from.is_empty() && edited_to.is_empty() {
+        anyhow::bail!("edited learning candidate cannot be empty");
+    }
+    confirm_learning_candidate_inner(candidate_timestamp_ms, Some((edited_from, edited_to)))
+}
+
+fn confirm_learning_candidate_inner(
+    candidate_timestamp_ms: u64,
+    edit: Option<(String, String)>,
+) -> anyhow::Result<()> {
     if matches!(
         latest_candidate_decision(candidate_timestamp_ms)?,
         Some("confirmed" | "ignored")
@@ -693,12 +713,26 @@ pub fn confirm_learning_candidate(candidate_timestamp_ms: u64) -> anyhow::Result
     let Some(candidate) = find_learning_candidate(candidate_timestamp_ms)? else {
         anyhow::bail!("learning candidate not found");
     };
+    let candidate = if let Some((edited_from, edited_to)) = edit.as_ref() {
+        candidate_with_edited_correction(candidate, edited_from, edited_to)
+    } else {
+        candidate
+    };
     let mut drafts = skill_drafts_from_candidate(&candidate)?;
     for draft in &mut drafts {
         draft.confidence = max_confidence(draft.confidence, "medium");
     }
     upsert_speech_skills(drafts);
-    write_learning_decision(candidate_timestamp_ms, "confirmed");
+    if let Some((edited_from, edited_to)) = edit {
+        write_learning_decision_with_edit(
+            candidate_timestamp_ms,
+            "confirmed",
+            &edited_from,
+            &edited_to,
+        );
+    } else {
+        write_learning_decision(candidate_timestamp_ms, "confirmed");
+    }
     Ok(())
 }
 
@@ -731,6 +765,28 @@ fn find_learning_candidate(candidate_timestamp_ms: u64) -> anyhow::Result<Option
         value.get("event").and_then(Value::as_str) == Some("correction_candidate")
             && value.get("timestampMs").and_then(Value::as_u64) == Some(candidate_timestamp_ms)
     }))
+}
+
+fn candidate_with_edited_correction(mut value: Value, edited_from: &str, edited_to: &str) -> Value {
+    let kind = if edited_from.is_empty() {
+        "insertion"
+    } else if edited_to.is_empty() {
+        "deletion"
+    } else {
+        "replacement"
+    };
+    if let Some(correction) = value.get_mut("correction").and_then(Value::as_object_mut) {
+        correction.insert("kind".to_string(), json!(kind));
+        correction.insert("from".to_string(), json!(edited_from));
+        correction.insert("to".to_string(), json!(edited_to));
+        correction.insert("fromChars".to_string(), json!(edited_from.chars().count()));
+        correction.insert("toChars".to_string(), json!(edited_to.chars().count()));
+    }
+    if let Some(object) = value.as_object_mut() {
+        object.insert("initialFieldValue".to_string(), json!(edited_from));
+        object.insert("finalText".to_string(), json!(edited_to));
+    }
+    value
 }
 
 fn read_learning_values() -> anyhow::Result<Vec<Value>> {
@@ -820,6 +876,24 @@ fn write_learning_decision(candidate_timestamp_ms: u64, decision: &'static str) 
         "timestampMs": timestamp_ms(),
         "candidateTimestampMs": candidate_timestamp_ms,
         "decision": decision,
+    }));
+}
+
+fn write_learning_decision_with_edit(
+    candidate_timestamp_ms: u64,
+    decision: &'static str,
+    edited_from: &str,
+    edited_to: &str,
+) {
+    write_jsonl(json!({
+        "event": "learning_candidate_decision",
+        "timestampMs": timestamp_ms(),
+        "candidateTimestampMs": candidate_timestamp_ms,
+        "decision": decision,
+        "editedCorrection": {
+            "from": edited_from,
+            "to": edited_to,
+        },
     }));
 }
 
@@ -1259,6 +1333,64 @@ mod tests {
         assert!(skills
             .iter()
             .any(|skill| skill.trigger == "col code" && skill.correction == "Claude Code"));
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&skill_path);
+        std::env::remove_var("OPENTYPELESS_LEARNING_CANDIDATES_PATH");
+        std::env::remove_var("OPENTYPELESS_SPEECH_SKILLS_PATH");
+    }
+
+    #[test]
+    fn edited_candidate_confirmation_uses_user_cleaned_pair() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let path = std::env::temp_dir().join(format!(
+            "opentypeless-learning-candidates-{}-{}.jsonl",
+            std::process::id(),
+            "edited-confirm"
+        ));
+        let skill_path = std::env::temp_dir().join(format!(
+            "opentypeless-speech-skills-{}-{}.json",
+            std::process::id(),
+            "edited-confirm"
+        ));
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&skill_path);
+        std::env::set_var("OPENTYPELESS_LEARNING_CANDIDATES_PATH", &path);
+        std::env::set_var("OPENTYPELESS_SPEECH_SKILLS_PATH", &skill_path);
+        std::env::remove_var("OPENTYPELESS_LEARNING_CANDIDATES");
+
+        let session = EditMonitorSession {
+            target_pid: Some(42),
+            original_text: "cold".into(),
+            inserted_text: "cold".into(),
+        };
+        record_final_candidate(&session, 42, "cold", "Claude Code //好了");
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let value: Value = serde_json::from_str(contents.trim()).unwrap();
+        let timestamp_ms = value["timestampMs"].as_u64().unwrap();
+        confirm_learning_candidate_with_edit(timestamp_ms, "cold".into(), "Claude Code".into())
+            .unwrap();
+
+        let skills: Vec<SpeechSkill> =
+            serde_json::from_str(&std::fs::read_to_string(&skill_path).unwrap()).unwrap();
+        assert!(skills
+            .iter()
+            .any(|skill| skill.trigger == "cold" && skill.correction == "Claude Code"));
+        assert!(!skills
+            .iter()
+            .any(|skill| skill.correction.contains("//好了")));
+
+        let decision_line = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .last()
+            .unwrap()
+            .to_string();
+        let decision: Value = serde_json::from_str(&decision_line).unwrap();
+        assert_eq!(decision["decision"], "confirmed");
+        assert_eq!(decision["editedCorrection"]["from"], "cold");
+        assert_eq!(decision["editedCorrection"]["to"], "Claude Code");
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(&skill_path);

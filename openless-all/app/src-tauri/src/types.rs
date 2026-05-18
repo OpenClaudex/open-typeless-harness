@@ -490,6 +490,12 @@ pub struct CapsulePayload {
 pub struct CredentialsStatus {
     pub volcengine_configured: bool,
     pub ark_configured: bool,
+    pub active_asr_provider: String,
+    pub active_asr_model: Option<String>,
+    pub active_asr_endpoint: Option<String>,
+    pub active_llm_provider: String,
+    pub active_llm_model: Option<String>,
+    pub active_llm_endpoint: Option<String>,
     pub asr_health: ProviderHealth,
     pub llm_health: ProviderHealth,
 }

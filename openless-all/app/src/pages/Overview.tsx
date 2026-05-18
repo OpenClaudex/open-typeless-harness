@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../components/Icon';
 import { getHotkeyTriggerLabel } from '../lib/hotkey';
-import { confirmLearningCandidate, getCredentials, getLearningDashboard, ignoreLearningCandidate, listHistory } from '../lib/ipc';
+import { confirmEditedLearningCandidate, confirmLearningCandidate, getCredentials, getLearningDashboard, ignoreLearningCandidate, listHistory } from '../lib/ipc';
 import type { CredentialsStatus, DictationSession, LearningDashboard, LearningDashboardCandidate, LearningHealthSignal, PolishMode, ProviderHealth } from '../lib/types';
 import { useHotkeySettings } from '../state/HotkeySettingsContext';
 import { Btn, Card, PageHeader, Pill } from './_atoms';
@@ -30,6 +30,12 @@ export function Overview({ onOpenHistory }: OverviewProps) {
   const [creds, setCreds] = useState<CredentialsStatus>({
     volcengineConfigured: false,
     arkConfigured: false,
+    activeAsrProvider: '',
+    activeAsrModel: null,
+    activeAsrEndpoint: null,
+    activeLlmProvider: '',
+    activeLlmModel: null,
+    activeLlmEndpoint: null,
     asrHealth: { state: 'unknown', checkedAt: null, message: null, consecutiveFailures: 0 },
     llmHealth: { state: 'unknown', checkedAt: null, message: null, consecutiveFailures: 0 },
   });
@@ -57,6 +63,16 @@ export function Overview({ onOpenHistory }: OverviewProps) {
     setLearningAction(timestampMs);
     try {
       await confirmLearningCandidate(timestampMs);
+      reloadLearning();
+    } finally {
+      setLearningAction(null);
+    }
+  };
+
+  const confirmEditedCandidate = async (timestampMs: number, from: string, to: string) => {
+    setLearningAction(timestampMs);
+    try {
+      await confirmEditedLearningCandidate(timestampMs, from, to);
       reloadLearning();
     } finally {
       setLearningAction(null);
@@ -107,19 +123,30 @@ export function Overview({ onOpenHistory }: OverviewProps) {
         desc={t('overview.desc')}
       />
 
-      <HarnessLoopCard />
+      <TodayHero
+        dashboard={learning}
+        hotkeyLabel={getHotkeyTriggerLabel(hotkey?.trigger)}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+      <LearningDashboardCard
+        dashboard={learning}
+        busyCandidate={learningAction}
+        onConfirmCandidate={confirmCandidate}
+        onConfirmEditedCandidate={confirmEditedCandidate}
+        onIgnoreCandidate={ignoreCandidate}
+      />
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
         <ProviderCard
           kind={t('overview.asrKind')}
-          name={t('overview.asrName')}
-          subname={providerHealthSubname(creds.asrHealth, t, t('overview.asrSubname'))}
+          name={providerDisplayName('asr', creds.activeAsrProvider, creds.activeAsrEndpoint, t('overview.asrName'))}
+          subname={providerHealthSubname(creds.asrHealth, t, creds.activeAsrModel, t('overview.asrSubname'))}
           health={creds.asrHealth}
         />
         <ProviderCard
           kind={t('overview.llmKind')}
-          name={t('overview.llmName')}
-          subname={providerHealthSubname(creds.llmHealth, t, creds.arkConfigured ? t('overview.llmConfigured') : t('overview.llmNotConfigured'))}
+          name={providerDisplayName('llm', creds.activeLlmProvider, creds.activeLlmEndpoint, t('overview.llmName'))}
+          subname={providerHealthSubname(creds.llmHealth, t, creds.activeLlmModel, creds.arkConfigured ? t('overview.llmConfigured') : t('overview.llmNotConfigured'))}
           health={creds.llmHealth}
         />
       </div>
@@ -130,13 +157,6 @@ export function Overview({ onOpenHistory }: OverviewProps) {
         <Metric icon="clock" label={t('overview.metricAvg')} value={formatDuration(metrics.avgLatencyMs, t)} trend={metrics.segmentsToday > 0 ? t('overview.metricAvgTrend') : t('overview.metricNoData')} />
         <Metric icon="bolt" label={t('overview.metricTotal')} value={String(history.length)} trend={t('overview.metricTotalTrend')} accent />
       </div>
-
-      <LearningDashboardCard
-        dashboard={learning}
-        busyCandidate={learningAction}
-        onConfirmCandidate={confirmCandidate}
-        onIgnoreCandidate={ignoreCandidate}
-      />
 
       {/* 底部一行 = flex:1 撑满剩余高度（父 wrapper 是 display:flex/column）。
           只有「最近识别」内部允许滚动；其他卡片按内容自然高度，不破裂底部圆角。
@@ -174,15 +194,96 @@ export function Overview({ onOpenHistory }: OverviewProps) {
   );
 }
 
+function TodayHero({
+  dashboard,
+  hotkeyLabel,
+}: {
+  dashboard: LearningDashboard | null;
+  hotkeyLabel: string;
+}) {
+  const { t } = useTranslation();
+  const skills = dashboard?.totalSpeechSkills ?? 0;
+  const candidates = dashboard?.learningCandidatesToday ?? 0;
+  const steps = [
+    t('overview.heroStepListen'),
+    t('overview.heroStepPolish'),
+    t('overview.heroStepLearn'),
+    t('overview.heroStepAdapt'),
+  ];
+  return (
+    <section
+      style={{
+        marginBottom: 18,
+        borderRadius: 22,
+        padding: 18,
+        position: 'relative',
+        overflow: 'hidden',
+        background: `
+          radial-gradient(140px 140px at 82% 22%, rgba(244,180,64,0.28), transparent 64%),
+          radial-gradient(220px 180px at 8% 12%, rgba(20,184,166,0.26), transparent 68%),
+          linear-gradient(135deg, #14140f 0%, #202017 46%, #0d302d 100%)
+        `,
+        color: '#fffaf0',
+        boxShadow: '0 22px 60px -34px rgba(10,10,11,0.55)',
+      }}
+    >
+      <div style={{ position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 22, alignItems: 'center' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+            <span style={{ border: '0.5px solid rgba(255,250,240,0.28)', borderRadius: 999, padding: '4px 9px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,250,240,0.78)' }}>
+              {t('overview.heroBadge')}
+            </span>
+            <span style={{ fontSize: 11, color: 'rgba(255,250,240,0.58)' }}>
+              {t('overview.heroProof', { skills, candidates })}
+            </span>
+          </div>
+          <div style={{ maxWidth: 560, fontSize: 28, lineHeight: 1.05, fontWeight: 760, letterSpacing: '-0.045em', marginBottom: 10 }}>
+            {t('overview.heroPrimary')}
+          </div>
+          <div style={{ maxWidth: 610, fontSize: 13, lineHeight: 1.6, color: 'rgba(255,250,240,0.70)' }}>
+            {t('overview.heroSecondary')}
+          </div>
+        </div>
+        <div
+          style={{
+            width: 230,
+            borderRadius: 18,
+            padding: 12,
+            background: 'rgba(255,250,240,0.08)',
+            border: '0.5px solid rgba(255,250,240,0.18)',
+            boxShadow: '0 1px 0 rgba(255,255,255,0.12) inset',
+          }}
+        >
+          <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,250,240,0.52)', marginBottom: 10 }}>
+            {t('overview.pressPrefix')} {hotkeyLabel} {t('overview.pressSuffix')}
+          </div>
+          <div style={{ display: 'grid', gap: 7 }}>
+            {steps.map((step, index) => (
+              <div key={step} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 20, height: 20, borderRadius: 999, display: 'grid', placeItems: 'center', background: index === 2 ? '#f4b440' : 'rgba(255,250,240,0.12)', color: index === 2 ? '#16130c' : 'rgba(255,250,240,0.74)', fontSize: 10, fontWeight: 700 }}>
+                  {index + 1}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 650, color: 'rgba(255,250,240,0.82)' }}>{step}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function LearningDashboardCard({
   dashboard,
   busyCandidate,
   onConfirmCandidate,
+  onConfirmEditedCandidate,
   onIgnoreCandidate,
 }: {
   dashboard: LearningDashboard | null;
   busyCandidate: number | null;
   onConfirmCandidate: (timestampMs: number) => void;
+  onConfirmEditedCandidate: (timestampMs: number, from: string, to: string) => void;
   onIgnoreCandidate: (timestampMs: number) => void;
 }) {
   const { t } = useTranslation();
@@ -276,6 +377,7 @@ function LearningDashboardCard({
                 candidate={candidate}
                 busy={busyCandidate === candidate.timestampMs}
                 onConfirm={onConfirmCandidate}
+                onConfirmEdit={onConfirmEditedCandidate}
                 onIgnore={onIgnoreCandidate}
               />
             ))}
@@ -328,16 +430,27 @@ function LearningCandidateCard({
   candidate,
   busy,
   onConfirm,
+  onConfirmEdit,
   onIgnore,
 }: {
   candidate: LearningDashboardCandidate;
   busy: boolean;
   onConfirm: (timestampMs: number) => void;
+  onConfirmEdit: (timestampMs: number, from: string, to: string) => void;
   onIgnore: (timestampMs: number) => void;
 }) {
   const { t } = useTranslation();
   const needsReview = candidate.status === 'needs_review';
   const tone = needsReview ? 'outline' : 'ok';
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftFrom, setDraftFrom] = useState(candidate.from);
+  const [draftTo, setDraftTo] = useState(candidate.to);
+  useEffect(() => {
+    setIsEditing(false);
+    setDraftFrom(candidate.from);
+    setDraftTo(candidate.to);
+  }, [candidate.timestampMs, candidate.from, candidate.to]);
+  const canSaveEdit = draftFrom.trim().length > 0 || draftTo.trim().length > 0;
   return (
     <div
       style={{
@@ -356,27 +469,73 @@ function LearningCandidateCard({
           {formatTimestamp(candidate.timestampMs)}
         </span>
       </div>
-      <div style={{ fontSize: 12, color: 'var(--ol-ink-2)', lineHeight: 1.45 }}>
-        <span style={{ color: 'var(--ol-ink-4)' }}>{candidate.from || '∅'}</span>
-        <span style={{ padding: '0 6px', color: 'var(--ol-blue)' }}>→</span>
-        <b>{candidate.to || '∅'}</b>
-      </div>
+      {isEditing ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, alignItems: 'center' }}>
+          <input
+            value={draftFrom}
+            onChange={event => setDraftFrom(event.currentTarget.value)}
+            placeholder={t('overview.learningEditFrom')}
+            style={learningEditInputStyle}
+          />
+          <span style={{ color: 'var(--ol-blue)', fontSize: 12 }}>→</span>
+          <input
+            value={draftTo}
+            onChange={event => setDraftTo(event.currentTarget.value)}
+            placeholder={t('overview.learningEditTo')}
+            style={learningEditInputStyle}
+          />
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: 'var(--ol-ink-2)', lineHeight: 1.45 }}>
+          <span style={{ color: 'var(--ol-ink-4)' }}>{candidate.from || '∅'}</span>
+          <span style={{ padding: '0 6px', color: 'var(--ol-blue)' }}>→</span>
+          <b>{candidate.to || '∅'}</b>
+        </div>
+      )}
       <div style={{ marginTop: 8, fontSize: 11, color: 'var(--ol-ink-4)', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
         {candidate.finalTextPreview}
       </div>
       {needsReview && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <Btn size="sm" variant="blue" disabled={busy} onClick={() => onConfirm(candidate.timestampMs)}>
-            {t('overview.learningActionConfirm')}
-          </Btn>
-          <Btn size="sm" variant="ghost" disabled={busy} onClick={() => onIgnore(candidate.timestampMs)}>
-            {t('overview.learningActionIgnore')}
-          </Btn>
+          {isEditing ? (
+            <>
+              <Btn size="sm" variant="blue" disabled={busy || !canSaveEdit} onClick={() => onConfirmEdit(candidate.timestampMs, draftFrom, draftTo)}>
+                {t('overview.learningActionSave')}
+              </Btn>
+              <Btn size="sm" variant="ghost" disabled={busy} onClick={() => setIsEditing(false)}>
+                {t('overview.learningActionCancel')}
+              </Btn>
+            </>
+          ) : (
+            <>
+              <Btn size="sm" variant="blue" disabled={busy} onClick={() => onConfirm(candidate.timestampMs)}>
+                {t('overview.learningActionConfirm')}
+              </Btn>
+              <Btn size="sm" variant="ghost" disabled={busy} onClick={() => setIsEditing(true)}>
+                {t('overview.learningActionEdit')}
+              </Btn>
+              <Btn size="sm" variant="ghost" disabled={busy} onClick={() => onIgnore(candidate.timestampMs)}>
+                {t('overview.learningActionIgnore')}
+              </Btn>
+            </>
+          )}
         </div>
       )}
     </div>
   );
 }
+
+const learningEditInputStyle = {
+  minWidth: 0,
+  border: '0.5px solid var(--ol-line-strong)',
+  borderRadius: 8,
+  padding: '6px 8px',
+  background: 'rgba(255,255,255,0.82)',
+  color: 'var(--ol-ink)',
+  font: 'inherit',
+  fontSize: 12,
+  outline: 'none',
+};
 
 function LearningSignalRow({ signal }: { signal: LearningHealthSignal }) {
   const { t } = useTranslation();
@@ -405,34 +564,6 @@ function LearningMetric({ label, value }: { label: string; value: number }) {
       <div style={{ fontSize: 10.5, color: 'var(--ol-ink-4)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 650, color: 'var(--ol-ink)', letterSpacing: '-0.02em' }}>{value}</div>
     </div>
-  );
-}
-
-function HarnessLoopCard() {
-  const { t } = useTranslation();
-  return (
-    <Card
-      padding={16}
-      style={{
-        marginBottom: 18,
-        background: 'linear-gradient(135deg, rgba(15,118,110,0.10), rgba(255,255,255,0.92) 48%, rgba(10,10,11,0.035))',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 18,
-      }}
-    >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 650, color: 'var(--ol-ink)', marginBottom: 4 }}>{t('overview.loopTitle')}</div>
-        <div style={{ fontSize: 12, color: 'var(--ol-ink-3)', lineHeight: 1.5 }}>{t('overview.loopDesc')}</div>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        <Pill tone="blue" size="sm">{t('overview.loopAsr')}</Pill>
-        <Pill tone="default" size="sm">{t('overview.loopPolish')}</Pill>
-        <Pill tone="dark" size="sm">{t('overview.loopMonitor')}</Pill>
-        <Pill tone="ok" size="sm">{t('overview.loopSkill')}</Pill>
-      </div>
-    </Card>
   );
 }
 
@@ -573,14 +704,34 @@ function providerHealthLabel(health: ProviderHealth, t: ReturnType<typeof useTra
   }
 }
 
-function providerHealthSubname(health: ProviderHealth, t: ReturnType<typeof useTranslation>['t'], fallback: string): string {
+function providerDisplayName(kind: 'asr' | 'llm', provider: string, endpoint: string | null, fallback: string): string {
+  const id = provider.trim().toLowerCase();
+  const url = (endpoint ?? '').trim().toLowerCase();
+  if (kind === 'asr') {
+    if (id === 'siliconflow' || url.includes('siliconflow')) return 'SiliconFlow SenseVoice';
+    if (id === 'volcengine') return '火山引擎';
+    if (id === 'whisper' || url.includes('openai.com')) return 'OpenAI Whisper';
+    if (id === 'groq' || url.includes('groq')) return 'Groq Whisper';
+    if (id === 'zhipu' || url.includes('bigmodel')) return '智谱 GLM-ASR';
+  } else {
+    if (url.includes('openrouter.ai')) return 'OpenRouter';
+    if (id === 'deepseek' || url.includes('deepseek.com')) return 'DeepSeek';
+    if (id === 'siliconflow' || url.includes('siliconflow')) return 'SiliconFlow';
+    if (id === 'ark' || url.includes('volces.com')) return '火山引擎 Ark';
+    if (id === 'openai' || url.includes('openai.com')) return 'OpenAI';
+  }
+  return provider || fallback;
+}
+
+function providerHealthSubname(health: ProviderHealth, t: ReturnType<typeof useTranslation>['t'], model: string | null, fallback: string): string {
+  const base = model?.trim() || fallback;
   if (health.state === 'ok' && health.checkedAt) {
-    return t('overview.providerHealthCheckedAt', { time: formatTime(health.checkedAt) });
+    return `${base} · ${t('overview.providerHealthCheckedAt', { time: formatTime(health.checkedAt) })}`;
   }
   if ((health.state === 'unstable' || health.state === 'down') && health.checkedAt) {
-    return t('overview.providerHealthLastCheckedAt', { time: formatTime(health.checkedAt) });
+    return `${base} · ${t('overview.providerHealthLastCheckedAt', { time: formatTime(health.checkedAt) })}`;
   }
-  return fallback;
+  return base;
 }
 
 function providerHealthTone(health: ProviderHealth): 'default' | 'blue' | 'ok' | 'outline' | 'dark' {

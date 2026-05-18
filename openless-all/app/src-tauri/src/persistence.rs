@@ -707,6 +707,11 @@ impl CredentialsVault {
         load_credentials().active.asr
     }
 
+    pub fn get_active_llm() -> String {
+        let _guard = credentials_lock().lock();
+        load_credentials().active.llm
+    }
+
     pub fn set_active_asr_provider(id: &str) -> Result<()> {
         let _guard = credentials_lock().lock();
         let mut root = load_credentials();

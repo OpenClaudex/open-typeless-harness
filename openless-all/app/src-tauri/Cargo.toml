@@ -1,6 +1,6 @@
 [package]
 name = "openless"
-version = "1.2.19"
+version = "0.1.0"
 description = "Open Typeless Harness — self-improving voice input runtime"
 authors = ["OpenClaudex"]
 edition = "2021"

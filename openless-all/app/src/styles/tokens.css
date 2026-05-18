@@ -1,34 +1,34 @@
-/* Open Typeless Harness design tokens — ink + white + teal accent, glassy */
+/* Open Typeless Harness design tokens — warm lab surface + graphite + teal/amber */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
 :root {
   /* Palette — neutrals */
-  --ol-white: #ffffff;
-  --ol-canvas: #f7f7f8;     /* outer chrome wash */
-  --ol-surface: #ffffff;
-  --ol-surface-2: #fafafa;
-  --ol-line: rgba(0, 0, 0, 0.08);
-  --ol-line-strong: rgba(0, 0, 0, 0.14);
-  --ol-line-soft: rgba(0, 0, 0, 0.05);
+  --ol-white: #fffaf0;
+  --ol-canvas: #f3ecdf;     /* outer chrome wash */
+  --ol-surface: #fffaf0;
+  --ol-surface-2: #f8f0e2;
+  --ol-line: rgba(36, 31, 22, 0.10);
+  --ol-line-strong: rgba(36, 31, 22, 0.18);
+  --ol-line-soft: rgba(36, 31, 22, 0.07);
 
   /* Ink */
-  --ol-ink: #0a0a0b;
-  --ol-ink-2: #2a2a2d;
-  --ol-ink-3: rgba(10, 10, 11, 0.62);
-  --ol-ink-4: rgba(10, 10, 11, 0.42);
-  --ol-ink-5: rgba(10, 10, 11, 0.24);
+  --ol-ink: #17140f;
+  --ol-ink-2: #342f25;
+  --ol-ink-3: rgba(23, 20, 15, 0.64);
+  --ol-ink-4: rgba(23, 20, 15, 0.42);
+  --ol-ink-5: rgba(23, 20, 15, 0.24);
 
   /* Teal accent */
   --ol-blue: #0f766e;
-  --ol-blue-hover: #0d5f59;
-  --ol-blue-soft: #e6fffb;
+  --ol-blue-hover: #0b5f59;
+  --ol-blue-soft: #dff6ed;
   --ol-blue-ring: rgba(15, 118, 110, 0.22);
 
   /* Glass */
-  --ol-glass-bg: rgba(255, 255, 255, 0.62);
-  --ol-glass-bg-strong: rgba(255, 255, 255, 0.78);
-  --ol-glass-border: rgba(255, 255, 255, 0.7);
+  --ol-glass-bg: rgba(255, 250, 240, 0.66);
+  --ol-glass-bg-strong: rgba(255, 250, 240, 0.82);
+  --ol-glass-border: rgba(255, 250, 240, 0.76);
   --ol-glass-blur: 20px;
   --ol-glass-blur-strong: 36px;
 
@@ -52,7 +52,8 @@
   --ol-r-pill: 999px;
 
   /* Typography */
-  --ol-font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --ol-font-sans: 'IBM Plex Sans', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --ol-font-display: 'Space Grotesk', 'IBM Plex Sans', 'PingFang SC', system-ui, sans-serif;
   --ol-font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
 
   /* Status colors (sparse use only) */

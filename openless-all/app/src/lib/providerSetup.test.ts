@@ -11,6 +11,12 @@ function credentials(
   return {
     volcengineConfigured,
     arkConfigured,
+    activeAsrProvider: 'siliconflow',
+    activeAsrModel: 'FunAudioLLM/SenseVoiceSmall',
+    activeAsrEndpoint: 'https://api.siliconflow.cn/v1',
+    activeLlmProvider: 'custom',
+    activeLlmModel: 'deepseek/deepseek-v3.2',
+    activeLlmEndpoint: 'https://openrouter.ai/api/v1',
     asrHealth: { state: 'unknown', checkedAt: null, message: null, consecutiveFailures: 0 },
     llmHealth: { state: 'unknown', checkedAt: null, message: null, consecutiveFailures: 0 },
   };
