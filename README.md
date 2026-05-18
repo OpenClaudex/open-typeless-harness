@@ -13,11 +13,11 @@
 </p>
 
 <p align="center">
-  <a href="README.zh.md">中文</a> •
+  <a href="README.zh.md">中文文档</a> •
   <a href="#quick-navigation">Quick Navigation</a> •
   <a href="#features">Features</a> •
-  <a href="#how-it-learns-your-habits">Learning Model</a> •
-  <a href="#safety-model">Safety Model</a>
+  <a href="#workflow">Workflow</a> •
+  <a href="#roadmap">Roadmap</a>
 </p>
 
 <p align="center">
@@ -28,20 +28,20 @@
 </p>
 
 > [!IMPORTANT]
-> **From one-off dictation to a voice input loop that improves.**
+> **Voice input should get better after you correct it.**
 >
-> Plain speech-to-text keeps making the same mistakes: product names, project names, mixed Chinese/English terms, and the phrases you always fix right after insertion.
+> Plain speech-to-text keeps failing on the same personal vocabulary: product names, paper terms, project names, mixed Chinese/English phrases, and tiny edits you make right after the text lands.
 >
-> Open Typeless Harness treats those edits as signal. It transcribes, polishes, inserts into the focused field, then learns from your post-insertion corrections so future dictation better matches your vocabulary.
+> Open Typeless Harness turns those corrections into local learning signal. It listens, polishes, inserts into the focused field, watches the post-insertion edit trail, and converts stable patterns into speech skills for the next dictation.
 >
-> The premise is simple: **every correction after the text lands should make the next insertion better.**
+> The goal is not another dictation box. The goal is a voice input loop that adapts to how you actually write.
 
 ## Quick Navigation
 
 > [!TIP]
-> **I'm a user** -> Open the app, put the cursor in any text field, dictate, and correct the text normally. The correction trail is the learning signal.
+> **For users** -> Dictate where you already type. Correct the inserted text normally. The correction trail becomes the learning signal.
 >
-> **I'm an agent** -> The product loop is `ASR transcript -> LLM polish -> focused-field insertion -> post-insertion edit monitor -> local speech skills`.
+> **For builders** -> The product loop is `ASR transcript -> LLM polish -> focused-field insertion -> edit monitor -> local speech skills`.
 
 <p align="center">
   <a href="docs/assets/open-typeless-harness-demo.mp4">
@@ -55,42 +55,48 @@
 
 ## Features
 
-- **Focused-field insertion**: dictate into the app you are already using instead of switching into a separate editor.
-- **LLM-polished output**: clean up spoken text before it lands in the target field.
-- **Post-insertion edit monitoring**: watch what the user actually changes after insertion.
-- **Local speech skills**: promote repeated corrections into local memory for future polish.
+- **Focused-field dictation**: speak into the app you are already using instead of switching to a separate editor.
+- **LLM-polished insertion**: clean up spoken fragments before they land in the target field.
+- **Correction-native learning**: observe what the user changes after insertion, not just what the ASR provider guessed.
+- **Local speech skills**: promote stable corrections into local memory for future polish.
 - **Mixed-language vocabulary**: handle terms such as `type script -> TypeScript` and `知呼 -> 知乎`.
 
-## How It Learns Your Habits
+## Workflow
 
-1. You dictate into the current focused field.
-2. Open Typeless Harness inserts polished text.
-3. For a short window after insertion, the edit monitor compares the inserted text with your manual edits.
-4. Stable repeated corrections become local speech skills.
-5. On later dictation, relevant speech skills are retrieved before the LLM polish step, so the model sees your vocabulary before it writes.
+| Stage | What happens | Why it matters |
+| --- | --- | --- |
+| Listen | Capture speech and produce an ASR transcript. | The user stays in the current writing context. |
+| Polish | Retrieve relevant speech skills and ask the model to clean the transcript. | Personal vocabulary is injected before text is written. |
+| Insert | Paste the polished text into the focused field. | The app behaves like an input layer, not a separate writing workspace. |
+| Learn | Watch short-window edits after insertion. | Real corrections become product feedback. |
+| Adapt | Promote repeated, stable corrections into local speech skills. | The next dictation can improve without manual prompt engineering. |
 
-This is not global autocorrect. It is a correction-native memory loop built from your actual post-insertion edits.
+## Learning Model
+
+Open Typeless Harness separates learning into two tracks:
+
+- **High-confidence corrections**: repeated post-insertion edits can be promoted automatically.
+- **Low-confidence candidates**: ambiguous edits stay visible for review before they affect later input.
+
+This is not global autocorrect. It is a correction-native memory loop built from the edits you actually make after text lands.
 
 ## Safety Model
 
-Open Typeless Harness is an input layer, not an autonomous agent. It writes into the field you are already using, and it should not execute tasks for you.
+Open Typeless Harness is an input layer, not an autonomous agent. It writes into the field you are already using and should not execute tasks for you.
 
 Correction evidence and speech skills stay on the machine by default. Ambiguous corrections should become contextual skills, not unsafe global find-and-replace rules.
 
-## Status
+## Roadmap
 
-Open Typeless Harness is a technical preview built as an experimental OpenClaudex fork/fusion on top of the OpenLess desktop runtime.
+- More stable ASR and polish provider fallback.
+- Better learning confidence scoring and candidate review.
+- Richer daily learning dashboard for habit formation.
+- Cleaner packaging for non-developer installation.
 
-Current focus:
+## Related
 
-- focused-field dictation
-- LLM-polished insertion
-- post-insertion edit monitoring
-- local speech-skill learning
-
-## Acknowledgements
-
-Built on top of the OpenLess desktop runtime and released under inherited MIT license terms.
+- Built on top of the OpenLess desktop runtime.
+- Designed as an OpenCodexLabs experiment around adaptive input and local speech skills.
 
 ## License
 
