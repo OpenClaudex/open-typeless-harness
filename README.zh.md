@@ -47,6 +47,10 @@
   <img src="docs/assets/open-typeless-harness-app.png" alt="Open Typeless Harness app screenshot" width="780">
 </p>
 
+<p align="center">
+  <a href="docs/assets/open-typeless-harness-demo.mp4"><strong>查看真实 App 操作视频</strong></a>
+</p>
+
 ## 功能
 
 - **聚焦输入框插入**：在你正在使用的 app 里直接口述，不需要切到单独编辑器。

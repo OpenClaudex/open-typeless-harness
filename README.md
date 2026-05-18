@@ -47,6 +47,10 @@
   <img src="docs/assets/open-typeless-harness-app.png" alt="Open Typeless Harness app screenshot" width="780">
 </p>
 
+<p align="center">
+  <a href="docs/assets/open-typeless-harness-demo.mp4"><strong>Watch the live app walkthrough</strong></a>
+</p>
+
 ## Features
 
 - **Focused-field insertion**: dictate into the app you are already using instead of switching into a separate editor.
