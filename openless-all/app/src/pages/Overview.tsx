@@ -213,60 +213,33 @@ function TodayHero({
   return (
     <section
       style={{
-        marginBottom: 18,
-        borderRadius: 22,
-        padding: 18,
-        position: 'relative',
-        overflow: 'hidden',
-        background: `
-          radial-gradient(140px 140px at 82% 22%, rgba(244,180,64,0.28), transparent 64%),
-          radial-gradient(220px 180px at 8% 12%, rgba(20,184,166,0.26), transparent 68%),
-          linear-gradient(135deg, #14140f 0%, #202017 46%, #0d302d 100%)
-        `,
-        color: '#fffaf0',
-        boxShadow: '0 22px 60px -34px rgba(10,10,11,0.55)',
+        marginBottom: 14,
+        borderRadius: 16,
+        padding: '12px 14px',
+        background: 'var(--ol-surface)',
+        color: 'var(--ol-ink)',
+        border: '1px solid var(--ol-line)',
+        boxShadow: 'var(--ol-shadow-sm)',
       }}
     >
-      <div style={{ position: 'relative', zIndex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 22, alignItems: 'center' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-            <span style={{ border: '0.5px solid rgba(255,250,240,0.28)', borderRadius: 999, padding: '4px 9px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,250,240,0.78)' }}>
-              {t('overview.heroBadge')}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+        <span style={{ flexShrink: 0, border: '1px solid var(--ol-line)', borderRadius: 999, padding: '4px 9px', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ol-ink-3)', background: 'var(--ol-surface-2)' }}>
+          {t('overview.heroBadge')}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', minWidth: 0 }}>
+          {steps.map((step, index) => (
+            <span key={step} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 650, color: 'var(--ol-ink-2)' }}>
+              <span style={{ width: 18, height: 18, borderRadius: 999, display: 'grid', placeItems: 'center', background: index === 2 ? '#1f2328' : 'var(--ol-surface-2)', color: index === 2 ? '#fff' : 'var(--ol-ink-4)', border: index === 2 ? '1px solid #1f2328' : '1px solid var(--ol-line)', fontSize: 10, fontWeight: 700 }}>
+                {index + 1}
+              </span>
+              {step}
             </span>
-            <span style={{ fontSize: 11, color: 'rgba(255,250,240,0.58)' }}>
-              {t('overview.heroProof', { skills, candidates })}
-            </span>
-          </div>
-          <div style={{ maxWidth: 560, fontSize: 28, lineHeight: 1.05, fontWeight: 760, letterSpacing: '-0.045em', marginBottom: 10 }}>
-            {t('overview.heroPrimary')}
-          </div>
-          <div style={{ maxWidth: 610, fontSize: 13, lineHeight: 1.6, color: 'rgba(255,250,240,0.70)' }}>
-            {t('overview.heroSecondary')}
-          </div>
+          ))}
         </div>
-        <div
-          style={{
-            width: 230,
-            borderRadius: 18,
-            padding: 12,
-            background: 'rgba(255,250,240,0.08)',
-            border: '0.5px solid rgba(255,250,240,0.18)',
-            boxShadow: '0 1px 0 rgba(255,255,255,0.12) inset',
-          }}
-        >
-          <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,250,240,0.52)', marginBottom: 10 }}>
-            {t('overview.pressPrefix')} {hotkeyLabel} {t('overview.pressSuffix')}
-          </div>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {steps.map((step, index) => (
-              <div key={step} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 20, height: 20, borderRadius: 999, display: 'grid', placeItems: 'center', background: index === 2 ? '#f4b440' : 'rgba(255,250,240,0.12)', color: index === 2 ? '#16130c' : 'rgba(255,250,240,0.74)', fontSize: 10, fontWeight: 700 }}>
-                  {index + 1}
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 650, color: 'rgba(255,250,240,0.82)' }}>{step}</span>
-              </div>
-            ))}
-          </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, fontSize: 11.5, color: 'var(--ol-ink-4)' }}>
+          <span>{t('overview.pressPrefix')} {hotkeyLabel}</span>
+          <span>{t('overview.heroProof', { skills, candidates })}</span>
         </div>
       </div>
     </section>
@@ -306,8 +279,8 @@ function LearningDashboardCard({
     <Card
       padding={16}
       style={{
-        marginBottom: 18,
-        background: 'linear-gradient(135deg, rgba(10,10,11,0.035), rgba(255,255,255,0.94) 42%, rgba(15,118,110,0.08))',
+        marginBottom: 16,
+        background: 'var(--ol-surface)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 18, marginBottom: 14 }}>

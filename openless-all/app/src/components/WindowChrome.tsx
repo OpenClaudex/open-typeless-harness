@@ -72,12 +72,10 @@ export function WindowChrome({
             ? '1px solid rgba(255,255,255,0.18)'
             : '0.5px solid rgba(0,0,0,.10)',
         background: `
-          radial-gradient(120% 90% at 8% 0%, rgba(244,180,64,0.18) 0%, rgba(244,180,64,0) 58%),
-          radial-gradient(100% 70% at 100% 100%, rgba(15,118,110,0.16) 0%, rgba(15,118,110,0) 55%),
-          linear-gradient(180deg, rgba(244,238,226,0.96) 0%, rgba(232,222,204,0.96) 100%)
+          linear-gradient(90deg, rgba(237,247,251,0.98) 0%, rgba(246,249,250,0.98) 36%, rgba(255,255,255,0.98) 100%)
         `,
-        backdropFilter: 'blur(var(--ol-glass-blur-strong)) saturate(190%)',
-        WebkitBackdropFilter: 'blur(var(--ol-glass-blur-strong)) saturate(190%)',
+        backdropFilter: 'blur(var(--ol-glass-blur)) saturate(150%)',
+        WebkitBackdropFilter: 'blur(var(--ol-glass-blur)) saturate(150%)',
         animation: os === 'win' ? undefined : 'ol-window-enter 0.42s var(--ol-motion-spring) both',
         transition: 'box-shadow 0.28s var(--ol-motion-soft), border-color 0.28s var(--ol-motion-soft), backdrop-filter 0.28s var(--ol-motion-soft)',
         willChange: 'opacity, transform, filter',

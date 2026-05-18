@@ -1,34 +1,32 @@
-/* Open Typeless Harness design tokens — warm lab surface + graphite + teal/amber */
-
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+/* Open Typeless Harness design tokens — Codex-like neutral workspace */
 
 :root {
   /* Palette — neutrals */
-  --ol-white: #fffaf0;
-  --ol-canvas: #f3ecdf;     /* outer chrome wash */
-  --ol-surface: #fffaf0;
-  --ol-surface-2: #f8f0e2;
-  --ol-line: rgba(36, 31, 22, 0.10);
-  --ol-line-strong: rgba(36, 31, 22, 0.18);
-  --ol-line-soft: rgba(36, 31, 22, 0.07);
+  --ol-white: #ffffff;
+  --ol-canvas: #edf7fb;
+  --ol-surface: #ffffff;
+  --ol-surface-2: #f6f7f8;
+  --ol-line: rgba(31, 35, 40, 0.10);
+  --ol-line-strong: rgba(31, 35, 40, 0.18);
+  --ol-line-soft: rgba(31, 35, 40, 0.07);
 
   /* Ink */
-  --ol-ink: #17140f;
-  --ol-ink-2: #342f25;
-  --ol-ink-3: rgba(23, 20, 15, 0.64);
-  --ol-ink-4: rgba(23, 20, 15, 0.42);
-  --ol-ink-5: rgba(23, 20, 15, 0.24);
+  --ol-ink: #1f2328;
+  --ol-ink-2: #3d444d;
+  --ol-ink-3: rgba(31, 35, 40, 0.64);
+  --ol-ink-4: rgba(31, 35, 40, 0.42);
+  --ol-ink-5: rgba(31, 35, 40, 0.24);
 
-  /* Teal accent */
-  --ol-blue: #0f766e;
-  --ol-blue-hover: #0b5f59;
-  --ol-blue-soft: #dff6ed;
-  --ol-blue-ring: rgba(15, 118, 110, 0.22);
+  /* Sparse accent */
+  --ol-blue: #2563eb;
+  --ol-blue-hover: #1d4ed8;
+  --ol-blue-soft: #eef4ff;
+  --ol-blue-ring: rgba(37, 99, 235, 0.18);
 
   /* Glass */
-  --ol-glass-bg: rgba(255, 250, 240, 0.66);
-  --ol-glass-bg-strong: rgba(255, 250, 240, 0.82);
-  --ol-glass-border: rgba(255, 250, 240, 0.76);
+  --ol-glass-bg: rgba(255, 255, 255, 0.74);
+  --ol-glass-bg-strong: rgba(255, 255, 255, 0.88);
+  --ol-glass-border: rgba(255, 255, 255, 0.76);
   --ol-glass-blur: 20px;
   --ol-glass-blur-strong: 36px;
 
@@ -38,10 +36,10 @@
   --ol-motion-quick: cubic-bezier(0.2, 0, 0, 1);
 
   /* Shadows */
-  --ol-shadow-sm: 0 1px 2px rgba(15, 17, 22, 0.04), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  --ol-shadow-md: 0 1px 2px rgba(15, 17, 22, 0.05), 0 6px 24px -12px rgba(15, 17, 22, 0.10), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-  --ol-shadow-lg: 0 20px 60px -20px rgba(15, 17, 22, 0.18), 0 8px 32px -16px rgba(15, 17, 22, 0.10), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
-  --ol-shadow-xl: 0 40px 120px -40px rgba(15, 17, 22, 0.30), 0 24px 60px -24px rgba(15, 17, 22, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  --ol-shadow-sm: 0 1px 2px rgba(31, 35, 40, 0.04), 0 0 0 0.5px rgba(31, 35, 40, 0.04);
+  --ol-shadow-md: 0 1px 2px rgba(31, 35, 40, 0.05), 0 8px 24px -18px rgba(31, 35, 40, 0.16), 0 0 0 0.5px rgba(31, 35, 40, 0.05);
+  --ol-shadow-lg: 0 18px 48px -28px rgba(31, 35, 40, 0.24), 0 8px 24px -18px rgba(31, 35, 40, 0.18), 0 0 0 0.5px rgba(31, 35, 40, 0.06);
+  --ol-shadow-xl: 0 24px 70px -38px rgba(31, 35, 40, 0.34), 0 12px 34px -24px rgba(31, 35, 40, 0.20), 0 0 0 0.5px rgba(31, 35, 40, 0.06);
 
   /* Radii */
   --ol-r-sm: 6px;
@@ -52,8 +50,8 @@
   --ol-r-pill: 999px;
 
   /* Typography */
-  --ol-font-sans: 'IBM Plex Sans', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --ol-font-display: 'Space Grotesk', 'IBM Plex Sans', 'PingFang SC', system-ui, sans-serif;
+  --ol-font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --ol-font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', system-ui, sans-serif;
   --ol-font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
 
   /* Status colors (sparse use only) */

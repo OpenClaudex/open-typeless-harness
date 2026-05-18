@@ -175,48 +175,43 @@ function FloatingShellBody({ os, initialTab, initialSettings }: { os: OS; initia
           zIndex: 1,
         }}>
 
-        {/* Sidebar — 透明地坐在外层磨砂底板上，让 LOGO/导航/快捷键/BETA/footer 共用同一片磨砂玻璃 */}
+        {/* Sidebar — Codex-like pinned project rail. */}
         <aside
           style={{
-            width: 204,
+            width: 246,
             flexShrink: 0,
             display: 'flex', flexDirection: 'column',
-            background: 'linear-gradient(180deg, rgba(23,20,15,0.06), rgba(23,20,15,0.02))',
-            borderRight: '0.5px solid rgba(36,31,22,0.08)',
-            padding: '12px 12px 12px',
+            background: 'var(--ol-canvas)',
+            borderRight: '1px solid rgba(31,35,40,0.08)',
+            padding: '12px 14px 12px',
           }}>
 
           {/* brand */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 8px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '2px 6px 18px' }}>
             <div
               aria-label={t('app.name')}
               style={{
-                width: 30,
-                height: 30,
-                borderRadius: 10,
+                width: 28,
+                height: 28,
+                borderRadius: 8,
                 display: 'grid',
                 placeItems: 'center',
-                background: 'linear-gradient(135deg, #17140f, #0f766e)',
-                color: '#fffaf0',
+                background: '#1f2328',
+                color: '#fff',
                 fontFamily: 'var(--ol-font-display)',
-                fontSize: 11,
-                fontWeight: 750,
-                letterSpacing: '-0.04em',
-                boxShadow: '0 12px 22px -16px rgba(23,20,15,0.8)',
+                fontSize: 9.5,
+                fontWeight: 700,
+                letterSpacing: '-0.06em',
+                boxShadow: '0 1px 1px rgba(31,35,40,0.10)',
               }}
             >
-              OT
+              OTH
             </div>
 
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: 'var(--ol-font-display)', fontSize: 14, fontWeight: 700, letterSpacing: '-0.04em', color: 'var(--ol-ink)', lineHeight: 1.05 }}>Open Typeless</div>
-              <div style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--ol-blue)', letterSpacing: '0.10em', textTransform: 'uppercase', marginTop: 3 }}>Learning input</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontFamily: 'var(--ol-font-display)', fontSize: 12.5, fontWeight: 700, letterSpacing: '-0.025em', color: 'var(--ol-ink)', lineHeight: 1.12, whiteSpace: 'nowrap' }}>Open Typeless Harness</div>
+              <div style={{ fontSize: 10.5, fontWeight: 500, color: 'var(--ol-ink-4)', marginTop: 2 }}>voice input loop · {APP_VERSION_LABEL}</div>
             </div>
-            <span style={{
-              marginLeft: 'auto', padding: '1px 6px', fontSize: 9.5, fontWeight: 600,
-              borderRadius: 999, background: 'rgba(244,180,64,0.18)', color: 'var(--ol-ink-2)',
-              letterSpacing: '0.04em',
-            }}>{APP_VERSION_LABEL}</span>
           </div>
 
           {/* nav */}
@@ -231,10 +226,10 @@ function FloatingShellBody({ os, initialTab, initialSettings }: { os: OS; initia
                     display: 'flex', alignItems: 'center', gap: 10,
                     padding: '7px 10px',
                     borderRadius: 8, border: 0,
-                    background: active ? '#17140f' : 'transparent',
-                    color: active ? '#fffaf0' : 'var(--ol-ink-3)',
+                    background: active ? 'rgba(31,35,40,0.08)' : 'transparent',
+                    color: active ? 'var(--ol-ink)' : 'var(--ol-ink-3)',
                     fontFamily: 'inherit', fontSize: 13, fontWeight: active ? 650 : 500,
-                    boxShadow: active ? '0 14px 28px -22px rgba(23,20,15,0.72)' : 'none',
+                    boxShadow: 'none',
                     cursor: 'default',
                     transition: 'background 0.16s var(--ol-motion-quick), color 0.16s var(--ol-motion-quick), box-shadow 0.18s var(--ol-motion-soft)',
                     textAlign: 'left',
@@ -249,24 +244,24 @@ function FloatingShellBody({ os, initialTab, initialSettings }: { os: OS; initia
 
           <div style={{ flex: 1 }} />
 
-          {/* BETA 区域 — 去掉描边和实色背景，让它和底部 footer 一起浮在磨砂玻璃上 */}
+          {/* BETA 区域 */}
           <div style={{ marginTop: 8, padding: '10px 10px 4px' }}>
-            <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--ol-blue)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>{t('shell.betaTag')}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--ol-ink-2)', marginTop: 4, lineHeight: 1.5 }}>{t('shell.betaNote')}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 650, color: 'var(--ol-ink-3)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>{t('shell.betaTag')}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ol-ink-4)', marginTop: 4, lineHeight: 1.5 }}>{t('shell.betaNote')}</div>
           </div>
         </aside>
 
         {/* Main content — inset white card sitting on the frosted backplate.
             内卡圆角与外层窗口（WindowChrome 20/14）对齐，避免视觉上"两个不一致的圆角"。 */}
-        <div style={{ flex: 1, minWidth: 0, padding: '4px 8px 6px 0', display: 'flex' }}>
+        <div style={{ flex: 1, minWidth: 0, padding: '0', display: 'flex' }}>
           <main
             style={{
               flex: 1, minWidth: 0,
               overflow: 'hidden',
               background: 'var(--ol-surface)',
-              borderRadius: 'var(--ol-window-console-radius)',
-              border: '0.5px solid rgba(0,0,0,0.06)',
-              boxShadow: '0 1px 0 rgba(255,255,255,0.72) inset, 0 18px 42px -30px rgba(23,20,15,0.24), 0 2px 6px -2px rgba(23,20,15,0.10)',
+              borderRadius: 0,
+              border: 0,
+              boxShadow: 'none',
               display: 'flex',
               flexDirection: 'column',
             }}
@@ -311,18 +306,20 @@ function FloatingShellBody({ os, initialTab, initialSettings }: { os: OS; initia
         </div>
       </div>
 
-      {/* Footer — 透明地坐在外层磨砂底板上，跟 sidebar 同一片磨砂玻璃 */}
+      {/* Footer */}
       <div
         style={{
           flexShrink: 0,
-          height: 44,
+          height: 40,
           display: 'flex', alignItems: 'center',
-          padding: '0 24px',
+          padding: '0 18px',
           gap: 4,
           fontSize: 11,
           color: 'var(--ol-ink-4)',
           position: 'relative',
           zIndex: 2,
+          background: 'var(--ol-surface)',
+          borderTop: '1px solid var(--ol-line-soft)',
         }}>
 
         <FooterIcon name="user" tip={t('shell.footer.account')} onClick={() => openSettings('providers')} />

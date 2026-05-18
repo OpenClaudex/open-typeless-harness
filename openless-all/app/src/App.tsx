@@ -153,7 +153,7 @@ function StartupShell() {
         minHeight: '100vh',
         display: 'grid',
         placeItems: 'center',
-        background: 'radial-gradient(circle at 20% 15%, rgba(244,180,64,0.16), transparent 34%), linear-gradient(180deg, rgba(244,238,226,0.98) 0%, rgba(232,222,204,0.98) 100%)',
+        background: 'linear-gradient(90deg, rgba(237,247,251,0.98) 0%, rgba(246,249,250,0.98) 36%, rgba(255,255,255,0.98) 100%)',
         color: 'var(--ol-ink-3)',
         fontFamily: 'var(--ol-font-sans)',
       }}
